@@ -7,14 +7,20 @@ import { Play, Pause, RotateCcw, TrendingUp, TrendingDown } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceDot } from 'recharts';
 
 // Generate realistic small-cap tape data
-function generateTapeData(basePrice = 4.20, durationSeconds = 90, ticksPerSecond = 12) {
+function generateTapeData(basePrice = 4.20, durationSeconds = 90, ticksPerSecond = 12, options = {}) {
+  const {
+    suddenDips = false,
+    randomization = 1.0,
+    volatilityMultiplier = 1.0
+  } = options;
+  
   const ticks = [];
   const totalTicks = durationSeconds * ticksPerSecond;
   let price = basePrice;
   let spread = 0.08;
   
   // Pattern: sideways -> spike up -> dip -> stall -> bounce -> dip -> stall -> push
-  const phases = [
+  const basePhases = [
     { name: 'sideways', duration: 0.08, trend: 0, volatility: 0.035 },
     { name: 'spike_up', duration: 0.22, trend: 0.025, volatility: 0.075 },
     { name: 'dip', duration: 0.12, trend: -0.018, volatility: 0.055 },
@@ -26,6 +32,13 @@ function generateTapeData(basePrice = 4.20, durationSeconds = 90, ticksPerSecond
     { name: 'final_dip', duration: 0.10, trend: -0.014, volatility: 0.050 },
   ];
   
+  // Apply randomization to phase durations
+  const phases = basePhases.map(phase => ({
+    ...phase,
+    duration: phase.duration * (1 + (Math.random() - 0.5) * 0.3 * randomization),
+    volatility: phase.volatility * volatilityMultiplier
+  }));
+  
   let currentTick = 0;
   let phaseStart = 0;
   
@@ -35,11 +48,15 @@ function generateTapeData(basePrice = 4.20, durationSeconds = 90, ticksPerSecond
     
     while (currentTick < phaseEnd && currentTick < totalTicks) {
       // Add occasional fast spikes (small-cap chaos)
-      const isFastMove = Math.random() < 0.08;
+      const isFastMove = Math.random() < (0.08 * randomization);
       const fastMultiplier = isFastMove ? (Math.random() < 0.5 ? 2.5 : -1.8) : 1;
       
+      // Sudden dips: if enabled, increase chance of sharp drops
+      const isSuddenDip = suddenDips && phase.name.includes('dip') && Math.random() < 0.15;
+      const dipMultiplier = isSuddenDip ? -2.5 : 1;
+      
       const noise = (Math.random() - 0.5) * phase.volatility * (isFastMove ? 1.5 : 1);
-      const trendMove = phase.trend * (1 + (Math.random() - 0.5) * 0.8) * fastMultiplier;
+      const trendMove = phase.trend * (1 + (Math.random() - 0.5) * 0.8 * randomization) * fastMultiplier * dipMultiplier;
       price = Math.max(1, price + trendMove + noise);
       
       if (phase.name.includes('stall')) {
@@ -353,14 +370,20 @@ export default function HyperscalpSimulator() {
     minDipMomentumDrop: 3
   });
   
+  const [tapeOptions, setTapeOptions] = useState({
+    suddenDips: false,
+    randomization: 1.0,
+    volatilityMultiplier: 1.0
+  });
+  
   const generateNewTape = useCallback(() => {
-    const tape = generateTapeData(4.20, 60, 10);
+    const tape = generateTapeData(4.20, 90, 12, tapeOptions);
     setTapeData(tape);
     setCurrentTick(0);
     setTrades([]);
     setIsPlaying(false);
     botStateRef.current = initBotState(params);
-  }, [params]);
+  }, [params, tapeOptions]);
   
   useEffect(() => {
     generateNewTape();
@@ -615,6 +638,53 @@ export default function HyperscalpSimulator() {
       </Card>
     </div>
         
+        {/* Tape Generation Options */}
+        <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
+          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Tape Generation</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <Label className="text-slate-400 text-xs">Sudden Dips</Label>
+              <div className="flex items-center gap-2 mt-2">
+                <Button
+                  variant={tapeOptions.suddenDips ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setTapeOptions(p => ({...p, suddenDips: !p.suddenDips}))}
+                  disabled={isPlaying}
+                  className="w-full"
+                >
+                  {tapeOptions.suddenDips ? 'ON' : 'OFF'}
+                </Button>
+              </div>
+            </div>
+            <div>
+              <Label className="text-slate-400 text-xs">Randomization</Label>
+              <div className="flex items-center gap-2 mt-1">
+                <Slider
+                  value={[tapeOptions.randomization * 100]}
+                  onValueChange={([v]) => setTapeOptions(p => ({...p, randomization: v/100}))}
+                  min={0} max={200} step={10}
+                  className="flex-1"
+                  disabled={isPlaying}
+                />
+                <span className="text-emerald-400 font-mono text-sm w-10">{(tapeOptions.randomization * 100).toFixed(0)}%</span>
+              </div>
+            </div>
+            <div>
+              <Label className="text-slate-400 text-xs">Volatility</Label>
+              <div className="flex items-center gap-2 mt-1">
+                <Slider
+                  value={[tapeOptions.volatilityMultiplier * 100]}
+                  onValueChange={([v]) => setTapeOptions(p => ({...p, volatilityMultiplier: v/100}))}
+                  min={50} max={200} step={10}
+                  className="flex-1"
+                  disabled={isPlaying}
+                />
+                <span className="text-emerald-400 font-mono text-sm w-10">{(tapeOptions.volatilityMultiplier * 100).toFixed(0)}%</span>
+              </div>
+            </div>
+          </div>
+        </Card>
+
         {/* Parameters */}
         <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
           <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Bot Parameters</h3>
