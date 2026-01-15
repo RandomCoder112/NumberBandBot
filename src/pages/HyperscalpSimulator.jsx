@@ -4,9 +4,11 @@ import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Play, Pause, RotateCcw, HelpCircle } from 'lucide-react';
+import { Play, Pause, RotateCcw, HelpCircle, TrendingUp, Activity } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceDot } from 'recharts';
+import { base44 } from "@/api/base44Client";
 
 // Generate realistic small-cap tape data
 function generateTapeData(basePrice = 4.20, durationSeconds = 90, ticksPerSecond = 12, options = {}) {
@@ -464,7 +466,123 @@ export default function HyperscalpSimulator() {
     setCurrentTick(0);
     setTrades([]);
     setIsPlaying(false);
+    setBotRunning(false);
     botStateRef.current = initBotState(params);
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    liveDataRef.current = [];
+  };
+
+  const startLiveMode = () => {
+    if (!ticker || shareQty <= 0) return;
+
+    setBotRunning(true);
+    botStateRef.current = initBotState(params);
+    liveDataRef.current = [];
+    setTrades([]);
+
+    // Connect to Alpaca websocket
+    const ws = new WebSocket('wss://stream.data.alpaca.markets/v2/iex');
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({
+        action: 'auth',
+        key: 'YOUR_KEY_PLACEHOLDER', // This won't work client-side, need backend
+        secret: 'YOUR_SECRET_PLACEHOLDER'
+      }));
+
+      setTimeout(() => {
+        ws.send(JSON.stringify({
+          action: 'subscribe',
+          quotes: [ticker],
+          trades: [ticker]
+        }));
+      }, 500);
+    };
+
+    let lastBid = null;
+    let lastAsk = null;
+    let tickCounter = 0;
+
+    ws.onmessage = async (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data[0]?.T === 'q') { // Quote
+        const quote = data[0];
+        lastBid = quote.bp;
+        lastAsk = quote.ap;
+
+        const mid = (lastBid + lastAsk) / 2;
+        const spread = lastAsk - lastBid;
+
+        const tick = {
+          tick: tickCounter++,
+          time: new Date().toISOString(),
+          bid: lastBid,
+          ask: lastAsk,
+          mid,
+          spread,
+          volume: quote.bs + quote.as
+        };
+
+        liveDataRef.current.push(tick);
+        setTapeData([...liveDataRef.current]);
+
+        // Process tick through bot
+        const result = processTickForBot(botStateRef.current, tick);
+
+        if (result.tradeInfo) {
+          // Execute trade via Alpaca
+          if (result.tradeInfo.type === 'BUY') {
+            try {
+              await base44.functions.invoke('alpacaStream', {
+                action: 'placeOrder',
+                ticker: ticker,
+                quantity: shareQty
+              });
+            } catch (err) {
+              console.error('Trade error:', err);
+            }
+          } else if (result.tradeInfo.type === 'SELL') {
+            try {
+              const size = result.tradeInfo.size === '50%' ? Math.floor(shareQty / 2) : shareQty;
+              await base44.functions.invoke('alpacaStream', {
+                action: 'closePosition',
+                ticker: ticker,
+                quantity: size
+              });
+            } catch (err) {
+              console.error('Trade error:', err);
+            }
+          }
+
+          setTrades(prev => [...prev, result.tradeInfo]);
+        }
+
+        setCurrentState(result.debugInfo);
+        setCurrentTick(tickCounter);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      setBotRunning(false);
+    };
+
+    ws.onclose = () => {
+      setBotRunning(false);
+    };
+  };
+
+  const stopLiveMode = () => {
+    setBotRunning(false);
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
   };
   
   // Prepare visible chart data
@@ -506,25 +624,109 @@ export default function HyperscalpSimulator() {
             <h1 className="text-4xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
               Number Theory Band
             </h1>
-            <p className="text-slate-500 text-sm mt-1">Hyperscalp Strategy Simulator</p>
+            <p className="text-slate-500 text-sm mt-1">Hyperscalp Strategy {mode === 'live' ? '- LIVE MODE' : 'Simulator'}</p>
           </div>
-          <div className="flex gap-2">
-            <Button 
-              onClick={togglePlayPause}
-              className={`${isPlaying ? 'bg-amber-600 hover:bg-amber-500' : 'bg-emerald-600 hover:bg-emerald-500'} px-6`}
-            >
-              {isPlaying ? <Pause className="w-4 h-4 mr-2" /> : <Play className="w-4 h-4 mr-2" />}
-              {isPlaying ? 'Pause' : currentTick === 0 ? 'Start' : 'Resume'}
-            </Button>
-            <Button onClick={reset} variant="outline" className="border-slate-700">
-              <RotateCcw className="w-4 h-4 mr-2" />
-              Reset
-            </Button>
-            <Button onClick={generateNewTape} variant="outline" className="border-slate-700">
-              New Tape
-            </Button>
+          <div className="flex gap-2 items-center">
+            <div className="flex items-center gap-2 bg-slate-800/80 px-3 py-2 rounded-lg border border-slate-700">
+              <TrendingUp className="w-4 h-4 text-slate-400" />
+              <Label className="text-slate-400 text-xs">Mode:</Label>
+              <Button 
+                variant={mode === 'simulator' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => { setMode('simulator'); reset(); }}
+                className="h-7"
+              >
+                Simulator
+              </Button>
+              <Button 
+                variant={mode === 'live' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => { setMode('live'); reset(); }}
+                className="h-7"
+              >
+                Live
+              </Button>
+            </div>
+
+            {mode === 'simulator' ? (
+              <>
+                <Button 
+                  onClick={togglePlayPause}
+                  className={`${isPlaying ? 'bg-amber-600 hover:bg-amber-500' : 'bg-emerald-600 hover:bg-emerald-500'} px-6`}
+                >
+                  {isPlaying ? <Pause className="w-4 h-4 mr-2" /> : <Play className="w-4 h-4 mr-2" />}
+                  {isPlaying ? 'Pause' : currentTick === 0 ? 'Start' : 'Resume'}
+                </Button>
+                <Button onClick={reset} variant="outline" className="border-slate-700">
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                  Reset
+                </Button>
+                <Button onClick={generateNewTape} variant="outline" className="border-slate-700">
+                  New Tape
+                </Button>
+              </>
+            ) : (
+              <>
+                {!botRunning ? (
+                  <Button 
+                    onClick={startLiveMode}
+                    className="bg-emerald-600 hover:bg-emerald-500 px-6"
+                  >
+                    <Activity className="w-4 h-4 mr-2" />
+                    Start Bot
+                  </Button>
+                ) : (
+                  <Button 
+                    onClick={stopLiveMode}
+                    className="bg-red-600 hover:bg-red-500 px-6"
+                  >
+                    <Pause className="w-4 h-4 mr-2" />
+                    Stop Bot
+                  </Button>
+                )}
+                <Button onClick={reset} variant="outline" className="border-slate-700">
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                  Reset
+                </Button>
+              </>
+            )}
           </div>
         </div>
+
+        {/* Live Mode Controls */}
+        {mode === 'live' && (
+          <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="text-slate-400 text-xs mb-2 block">Ticker Symbol</Label>
+                <Input
+                  value={ticker}
+                  onChange={(e) => setTicker(e.target.value.toUpperCase())}
+                  placeholder="AAPL"
+                  className="bg-slate-900/50 border-slate-700 text-white"
+                  disabled={botRunning}
+                />
+              </div>
+              <div>
+                <Label className="text-slate-400 text-xs mb-2 block">Share Quantity</Label>
+                <Input
+                  type="number"
+                  value={shareQty}
+                  onChange={(e) => setShareQty(parseInt(e.target.value) || 0)}
+                  placeholder="100"
+                  className="bg-slate-900/50 border-slate-700 text-white"
+                  disabled={botRunning}
+                />
+              </div>
+            </div>
+            {botRunning && (
+              <div className="mt-3 flex items-center gap-2 text-emerald-400 text-sm">
+                <Activity className="w-4 h-4 animate-pulse" />
+                Bot is running on {ticker} with {shareQty} shares
+              </div>
+            )}
+          </Card>
+        )}
         
         {/* Progress Bar */}
         <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
@@ -676,9 +878,10 @@ export default function HyperscalpSimulator() {
       </Card>
     </div>
         
-        {/* Tape Generation Options */}
-        <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
-          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Tape Generation</h3>
+        {/* Tape Generation Options - Only show in simulator mode */}
+        {mode === 'simulator' && (
+          <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
+            <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Tape Generation</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <div className="flex items-center gap-1 mb-1">
