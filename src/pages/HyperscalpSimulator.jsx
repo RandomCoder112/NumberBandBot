@@ -176,10 +176,15 @@ function processTickForBot(botState, tick) {
   else if (botState.state === 'BUILDING_UP') {
     // Spike detected, now watching for THE NUMBER to start going down
     // "when that number is starting to go down this is a dip"
-    if (botState.momentum < botState.prevMomentum && botState.momentum >= 0) {
+    // OR if momentum already negative but historical data shows strong surge (50%+ of peak)
+    const hasStrongHistory = botState.historicalPeakMomentum > 0 && 
+                             Math.abs(botState.momentum) >= (botState.historicalPeakMomentum * 0.5);
+    
+    if ((botState.momentum < botState.prevMomentum && botState.momentum >= 0) || 
+        (botState.momentum < 0 && hasStrongHistory)) {
       botState.state = 'DIPPING';
       botState.dipStartTick = tick.tick;
-      botState.dipStartMomentum = botState.prevMomentum; // peak before dip
+      botState.dipStartMomentum = botState.prevMomentum || botState.peakMomentum;
     }
   }
   else if (botState.state === 'DIPPING') {
