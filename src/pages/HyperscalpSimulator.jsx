@@ -166,9 +166,14 @@ function processTickForBot(botState, tick) {
     botState.prevMomentum = 0;
     botState.peakMomentum = 0;
     
-    // If historical momentum was strong, keep watching for dips
-    if (botState.historicalPeakMomentum >= minMomentumForSpike) {
+    // If historical momentum was strong AND price still in range, keep watching for dips
+    if (botState.historicalPeakMomentum >= minMomentumForSpike && stillInSurgeRange) {
       botState.state = 'BUILDING_UP';
+    } else if (!stillInSurgeRange) {
+      // Price flushed down, reset everything
+      botState.state = 'IDLE';
+      botState.historicalPeakMomentum = 0;
+      botState.surgeStartPrice = null;
     } else {
       botState.state = 'IDLE';
     }
