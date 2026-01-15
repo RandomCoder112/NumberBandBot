@@ -132,6 +132,10 @@ function processTickForBot(botState, tick) {
     if (botState.momentum > botState.peakMomentum) {
       botState.peakMomentum = botState.momentum;
     }
+    // Track when surge started
+    if (botState.momentum === 1 && botState.surgeStartPrice === null) {
+      botState.surgeStartPrice = mid;
+    }
   } else if (delta < -0.003) {
     botState.momentum -= 1;
     botState.unchangedTicks = 0;
