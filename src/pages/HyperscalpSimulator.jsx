@@ -375,11 +375,12 @@ export default function HyperscalpSimulator() {
   const [tapeOptions, setTapeOptions] = useState({
     suddenDips: false,
     randomization: 1.0,
-    volatilityMultiplier: 1.0
+    volatilityMultiplier: 1.0,
+    startingPrice: 4.20
   });
   
   const generateNewTape = useCallback(() => {
-    const tape = generateTapeData(4.20, 90, 12, tapeOptions);
+    const tape = generateTapeData(tapeOptions.startingPrice, 90, 12, tapeOptions);
     setTapeData(tape);
     setCurrentTick(0);
     setTrades([]);
@@ -645,6 +646,29 @@ export default function HyperscalpSimulator() {
         <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
           <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Tape Generation</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <div className="flex items-center gap-1 mb-1">
+                <Label className="text-slate-400 text-xs">Starting Price</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="w-3 h-3 text-slate-500 cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">Base price at the start of the simulation</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="flex items-center gap-2 mt-1">
+                <Slider
+                  value={[tapeOptions.startingPrice * 100]}
+                  onValueChange={([v]) => setTapeOptions(p => ({...p, startingPrice: v/100}))}
+                  min={100} max={2000} step={10}
+                  className="flex-1"
+                  disabled={isPlaying}
+                />
+                <span className="text-emerald-400 font-mono text-sm w-12">${(tapeOptions.startingPrice).toFixed(2)}</span>
+              </div>
+            </div>
             <div>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-1">
