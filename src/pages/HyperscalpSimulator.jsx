@@ -887,5 +887,6 @@ export default function HyperscalpSimulator() {
         </Card>
       </div>
     </div>
+    </TooltipProvider>
   );
 }
