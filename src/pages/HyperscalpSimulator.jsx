@@ -7,7 +7,7 @@ import { Play, Pause, RotateCcw, TrendingUp, TrendingDown } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceDot } from 'recharts';
 
 // Generate realistic small-cap tape data
-function generateTapeData(basePrice = 4.20, durationSeconds = 60, ticksPerSecond = 10) {
+function generateTapeData(basePrice = 4.20, durationSeconds = 90, ticksPerSecond = 12) {
   const ticks = [];
   const totalTicks = durationSeconds * ticksPerSecond;
   let price = basePrice;
@@ -93,8 +93,7 @@ function initBotState(params) {
     velocityHistory: [],
     unchangedTicks: 0,
     peakMomentum: 0,
-    historicalPeakMomentum: 0,
-    surgeStartPrice: null, // Track price when momentum surge started
+    historicalPeakPrice: 0, // Track highest price reached
     params
   };
 }
@@ -132,15 +131,16 @@ function processTickForBot(botState, tick) {
     if (botState.momentum > botState.peakMomentum) {
       botState.peakMomentum = botState.momentum;
     }
-    // Track when surge started
-    if (botState.momentum === 1 && botState.surgeStartPrice === null) {
-      botState.surgeStartPrice = mid;
-    }
   } else if (delta < -0.003) {
     botState.momentum -= 1;
     botState.unchangedTicks = 0;
   } else {
     botState.unchangedTicks += 1;
+  }
+
+  // Track highest price reached
+  if (mid > botState.historicalPeakPrice) {
+    botState.historicalPeakPrice = mid;
   }
   
   // Calculate velocity (rate of change in momentum) - THE SPEED
@@ -155,32 +155,25 @@ function processTickForBot(botState, tick) {
   const avgVelocity = botState.velocityHistory.reduce((a, b) => a + b, 0) / 
                       (botState.velocityHistory.length || 1);
   
-  // Check if price is still in surge range (not down more than 50% from surge start)
-  const priceDownFromSurge = botState.surgeStartPrice ? 
-    ((botState.surgeStartPrice - mid) / botState.surgeStartPrice) : 0;
-  const stillInSurgeRange = priceDownFromSurge < 0.5; // Price hasn't dropped 50% from surge start
+  // Check if price hasn't flushed (still above 50% of peak price)
+  const notFlushed = botState.historicalPeakPrice > 0 && 
+                     mid > (botState.historicalPeakPrice * 0.5);
   
   // Consolidation detection: Reset momentum to 0 if price unchanged for several ticks
   if (botState.unchangedTicks >= consolidationTicks && botState.state !== 'HOLDING') {
-    // Save historical peak before resetting
-    if (botState.peakMomentum > botState.historicalPeakMomentum) {
-      botState.historicalPeakMomentum = botState.peakMomentum;
-    }
-    
     botState.momentum = 0;
     botState.prevMomentum = 0;
     botState.peakMomentum = 0;
-    
-    // Keep watching for dips if stock spiked before and price hasn't completely flushed
-    if (botState.historicalPeakMomentum > 0 && stillInSurgeRange) {
+
+    // Keep watching for dips if price hasn't flushed
+    if (notFlushed) {
       botState.state = 'BUILDING_UP';
-    } else if (!stillInSurgeRange || botState.historicalPeakMomentum === 0) {
-      // Price flushed down completely OR never spiked - now truly idle
+    } else {
+      // Price flushed down completely - now truly idle
       botState.state = 'IDLE';
-      botState.historicalPeakMomentum = 0;
-      botState.surgeStartPrice = null;
+      botState.historicalPeakPrice = 0;
     }
-    
+
     botState.dipStartTick = null;
     botState.dipStartMomentum = null;
   }
@@ -194,12 +187,9 @@ function processTickForBot(botState, tick) {
   }
   else if (botState.state === 'BUILDING_UP') {
     // Spike detected, now watching for THE NUMBER to start going down
-    // After consolidation: if we had a strong surge historically and price is still in range,
-    // watch for ANY dip (momentum going negative)
-    const hasStrongHistory = botState.historicalPeakMomentum >= minMomentumForSpike;
-    
+    // Watch for dip if momentum starts decreasing OR goes negative
     if ((botState.momentum < botState.prevMomentum && botState.momentum >= 0) || 
-        (botState.momentum < 0 && hasStrongHistory && stillInSurgeRange)) {
+        (botState.momentum < 0 && notFlushed)) {
       botState.state = 'DIPPING';
       botState.dipStartTick = tick.tick;
       botState.dipStartMomentum = botState.prevMomentum || botState.peakMomentum;
@@ -243,13 +233,12 @@ function processTickForBot(botState, tick) {
     
     // If momentum goes back up significantly, exit dipping state without buying
     if (botState.momentum > botState.prevMomentum && momentumDropped < 1) {
-      // Go back to watching for dips if we had a strong surge
-      if (botState.historicalPeakMomentum > 0 && stillInSurgeRange) {
+      // Go back to watching for dips if price hasn't flushed
+      if (notFlushed) {
         botState.state = 'BUILDING_UP';
       } else {
         botState.state = 'IDLE';
-        botState.historicalPeakMomentum = 0;
-        botState.surgeStartPrice = null;
+        botState.historicalPeakPrice = 0;
       }
       botState.dipStartTick = null;
       botState.dipStartMomentum = null;
@@ -304,27 +293,23 @@ function processTickForBot(botState, tick) {
       // After exit, look for next entry opportunity
       botState.position = null;
       if (reason === 'STOP_LOSS' || reason === 'SUSTAINED_DROP') {
-        // Check if historical momentum was strong AND price still in surge range
-        const stillStrong = botState.historicalPeakMomentum >= minMomentumForSpike && stillInSurgeRange;
-        if (stillStrong) {
-          // Still dipping, look for next consolidation/entry
+        // If price hasn't flushed, immediately look for another dip
+        if (notFlushed) {
           botState.state = 'BUILDING_UP';
         } else {
           botState.state = 'IDLE';
           botState.momentum = 0;
           botState.prevMomentum = 0;
           botState.peakMomentum = 0;
-          botState.historicalPeakMomentum = 0;
-          botState.surgeStartPrice = null;
+          botState.historicalPeakPrice = 0;
         }
       } else {
-        // Profit taken, reset
+        // Profit taken, reset everything
         botState.state = 'IDLE';
         botState.momentum = 0;
         botState.prevMomentum = 0;
         botState.peakMomentum = 0;
-        botState.historicalPeakMomentum = 0;
-        botState.surgeStartPrice = null;
+        botState.historicalPeakPrice = 0;
       }
       botState.dipStartTick = null;
       botState.dipStartMomentum = null;
@@ -519,9 +504,9 @@ export default function HyperscalpSimulator() {
             </div>
           </Card>
           <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
-            <div className="text-xs text-slate-400 mb-1">Historic Peak</div>
+            <div className="text-xs text-slate-400 mb-1">Peak Price</div>
             <div className="text-2xl font-bold text-purple-400">
-              {botStateRef.current?.historicalPeakMomentum || 0}
+              ${(botStateRef.current?.historicalPeakPrice || 0).toFixed(3)}
             </div>
           </Card>
           <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
