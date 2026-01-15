@@ -523,7 +523,11 @@ export default function HyperscalpSimulator() {
 
     // Connect to backend WebSocket proxy
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/api/functions/alpacaWebSocket?ticker=${ticker}`;
+    const host = window.location.host;
+    const wsUrl = `${protocol}//${host}/api/functions/alpacaWebSocket?ticker=${ticker}`;
+    
+    addLog(`Connecting to: ${wsUrl}`);
+    
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
