@@ -3,8 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
-import { Play, Pause, RotateCcw, TrendingUp, TrendingDown } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceDot } from 'recharts';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Play, Pause, RotateCcw, HelpCircle } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceDot } from 'recharts';
 
 // Generate realistic small-cap tape data
 function generateTapeData(basePrice = 4.20, durationSeconds = 90, ticksPerSecond = 12, options = {}) {
@@ -460,8 +461,9 @@ export default function HyperscalpSimulator() {
   const progress = tapeData ? (currentTick / tapeData.length * 100).toFixed(0) : 0;
   
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white p-4">
-      <div className="max-w-6xl mx-auto space-y-4">
+    <TooltipProvider>
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white p-4">
+        <div className="max-w-6xl mx-auto space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between mb-2">
           <div>
@@ -568,7 +570,7 @@ export default function HyperscalpSimulator() {
                   tick={{ fill: '#64748b', fontSize: 11 }}
                   tickFormatter={(v) => `$${v.toFixed(2)}`}
                 />
-                <Tooltip
+                <RechartsTooltip
                   contentStyle={{ 
                     backgroundColor: '#1e293b', 
                     border: '1px solid #334155',
@@ -643,8 +645,18 @@ export default function HyperscalpSimulator() {
           <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Tape Generation</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
-              <Label className="text-slate-400 text-xs">Sudden Dips</Label>
-              <div className="flex items-center gap-2 mt-2">
+              <div className="flex items-center gap-1 mb-2">
+                <Label className="text-slate-400 text-xs">Sudden Dips</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="w-3 h-3 text-slate-500 cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">Add sharp random drops during dip phases</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="flex items-center gap-2">
                 <Button
                   variant={tapeOptions.suddenDips ? "default" : "outline"}
                   size="sm"
@@ -655,9 +667,19 @@ export default function HyperscalpSimulator() {
                   {tapeOptions.suddenDips ? 'ON' : 'OFF'}
                 </Button>
               </div>
-            </div>
-            <div>
-              <Label className="text-slate-400 text-xs">Randomization</Label>
+              </div>
+              <div>
+              <div className="flex items-center gap-1 mb-1">
+                <Label className="text-slate-400 text-xs">Randomization</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="w-3 h-3 text-slate-500 cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">Controls variability in phase timing and moves</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <div className="flex items-center gap-2 mt-1">
                 <Slider
                   value={[tapeOptions.randomization * 100]}
@@ -668,9 +690,19 @@ export default function HyperscalpSimulator() {
                 />
                 <span className="text-emerald-400 font-mono text-sm w-10">{(tapeOptions.randomization * 100).toFixed(0)}%</span>
               </div>
-            </div>
-            <div>
-              <Label className="text-slate-400 text-xs">Volatility</Label>
+              </div>
+              <div>
+              <div className="flex items-center gap-1 mb-1">
+                <Label className="text-slate-400 text-xs">Volatility</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="w-3 h-3 text-slate-500 cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">Price movement intensity multiplier</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <div className="flex items-center gap-2 mt-1">
                 <Slider
                   value={[tapeOptions.volatilityMultiplier * 100]}
@@ -690,7 +722,17 @@ export default function HyperscalpSimulator() {
           <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Bot Parameters</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
-              <Label className="text-slate-400 text-xs">Min Dip Ticks</Label>
+              <div className="flex items-center gap-1 mb-1">
+                <Label className="text-slate-400 text-xs">Min Dip Ticks</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="w-3 h-3 text-slate-500 cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">Minimum time dip must last before entry</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <div className="flex items-center gap-2 mt-1">
                 <Slider
                   value={[params.minDipTicks]}
@@ -701,9 +743,19 @@ export default function HyperscalpSimulator() {
                 />
                 <span className="text-emerald-400 font-mono text-sm w-6">{params.minDipTicks}</span>
               </div>
-            </div>
-            <div>
-              <Label className="text-slate-400 text-xs">Stall Velocity</Label>
+              </div>
+              <div>
+              <div className="flex items-center gap-1 mb-1">
+                <Label className="text-slate-400 text-xs">Stall Velocity</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="w-3 h-3 text-slate-500 cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">Max speed for detecting a stall (entry/exit signal)</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <div className="flex items-center gap-2 mt-1">
                 <Slider
                   value={[params.stallVelocityThreshold * 100]}
@@ -714,9 +766,19 @@ export default function HyperscalpSimulator() {
                 />
                 <span className="text-emerald-400 font-mono text-sm w-9">{params.stallVelocityThreshold.toFixed(2)}</span>
               </div>
-            </div>
-            <div>
-              <Label className="text-slate-400 text-xs">Stop Loss Drop</Label>
+              </div>
+              <div>
+              <div className="flex items-center gap-1 mb-1">
+                <Label className="text-slate-400 text-xs">Stop Loss Drop</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="w-3 h-3 text-slate-500 cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">Momentum drop from entry to trigger stop loss</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <div className="flex items-center gap-2 mt-1">
                 <Slider
                   value={[params.stopLossMomentumDrop]}
@@ -727,9 +789,19 @@ export default function HyperscalpSimulator() {
                 />
                 <span className="text-emerald-400 font-mono text-sm w-6">{params.stopLossMomentumDrop}</span>
               </div>
-            </div>
-            <div>
-              <Label className="text-slate-400 text-xs">Profit Rise</Label>
+              </div>
+              <div>
+              <div className="flex items-center gap-1 mb-1">
+                <Label className="text-slate-400 text-xs">Profit Rise</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="w-3 h-3 text-slate-500 cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">Momentum gain from entry to look for profit stall</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <div className="flex items-center gap-2 mt-1">
                 <Slider
                   value={[params.profitMomentumRise]}
@@ -740,9 +812,19 @@ export default function HyperscalpSimulator() {
                 />
                 <span className="text-emerald-400 font-mono text-sm w-6">{params.profitMomentumRise}</span>
               </div>
-            </div>
-            <div>
-              <Label className="text-slate-400 text-xs">Speed (ms/tick)</Label>
+              </div>
+              <div>
+              <div className="flex items-center gap-1 mb-1">
+                <Label className="text-slate-400 text-xs">Speed (ms/tick)</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="w-3 h-3 text-slate-500 cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">Simulation playback speed</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <div className="flex items-center gap-2 mt-1">
                 <Slider
                   value={[speed]}
