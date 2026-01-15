@@ -61,7 +61,16 @@ function generateTapeData(basePrice = 4.20, durationSeconds = 90, ticksPerSecond
       const dipMultiplier = isSuddenDip ? -2.5 : 1;
       
       const noise = (Math.random() - 0.5) * phase.volatility * (isFastMove ? 1.5 : 1);
-      const trendMove = phase.trend * (1 + (Math.random() - 0.5) * 0.8 * randomization) * fastMultiplier * dipMultiplier;
+      let trendMove = phase.trend * (1 + (Math.random() - 0.5) * 0.8 * randomization) * fastMultiplier * dipMultiplier;
+      
+      // Dampen downward moves when price is elevated to prevent deep drops
+      const priceAboveBase = price - basePrice;
+      if (priceAboveBase > 0.3 && trendMove < 0) {
+        // Reduce downward momentum proportionally to how high we are
+        const dampening = 1 - (priceAboveBase / (maxPriceRange > 0 ? maxPriceRange : 10)) * 0.7;
+        trendMove *= Math.max(0.2, dampening);
+      }
+      
       let newPrice = price + trendMove + noise;
       
       // Constrain price within range if maxPriceRange is set
