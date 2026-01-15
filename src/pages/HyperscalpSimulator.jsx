@@ -447,6 +447,8 @@ export default function HyperscalpSimulator() {
   const winRate = sellTrades.length > 0 ? (winTrades / sellTrades.length * 100).toFixed(0) : 0;
   
   const currentPrice = tapeData?.[currentTick]?.mid || 0;
+  const basePrice = tapeData?.[0]?.mid || 0;
+  const priceChangePercent = basePrice ? (((currentPrice - basePrice) / basePrice) * 100).toFixed(2) : 0;
   const progress = tapeData ? (currentTick / tapeData.length * 100).toFixed(0) : 0;
   
   return (
@@ -493,10 +495,19 @@ export default function HyperscalpSimulator() {
         </div>
         
         {/* Live Stats Row */}
-        <div className="grid grid-cols-5 gap-3">
+        <div className="grid grid-cols-7 gap-3">
           <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
             <div className="text-xs text-slate-400 mb-1">Current Price</div>
             <div className="text-2xl font-bold text-emerald-400">${currentPrice.toFixed(3)}</div>
+          </Card>
+          <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
+            <div className="text-xs text-slate-400 mb-1">% from Base</div>
+            <div className={`text-2xl font-bold ${
+              priceChangePercent > 0 ? 'text-emerald-400' : 
+              priceChangePercent < 0 ? 'text-red-400' : 'text-slate-400'
+            }`}>
+              {priceChangePercent > 0 ? '+' : ''}{priceChangePercent}%
+            </div>
           </Card>
           <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
             <div className="text-xs text-slate-400 mb-1">Momentum</div>
@@ -505,6 +516,12 @@ export default function HyperscalpSimulator() {
               currentState?.momentum < 0 ? 'text-red-400' : 'text-slate-400'
             }`}>
               {currentState?.momentum || 0}
+            </div>
+          </Card>
+          <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
+            <div className="text-xs text-slate-400 mb-1">Historic Peak</div>
+            <div className="text-2xl font-bold text-purple-400">
+              {botStateRef.current?.historicalPeakMomentum || 0}
             </div>
           </Card>
           <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
