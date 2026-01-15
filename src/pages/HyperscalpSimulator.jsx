@@ -146,9 +146,22 @@ function processTickForBot(botState, tick) {
   
   // Consolidation detection: Reset momentum to 0 if price unchanged for several ticks
   if (botState.unchangedTicks >= consolidationTicks && botState.state !== 'HOLDING') {
+    // Save historical peak before resetting
+    if (botState.peakMomentum > botState.historicalPeakMomentum) {
+      botState.historicalPeakMomentum = botState.peakMomentum;
+    }
+    
     botState.momentum = 0;
     botState.prevMomentum = 0;
-    botState.state = 'IDLE';
+    botState.peakMomentum = 0;
+    
+    // If historical momentum was strong, keep watching for dips
+    if (botState.historicalPeakMomentum >= minMomentumForSpike) {
+      botState.state = 'BUILDING_UP';
+    } else {
+      botState.state = 'IDLE';
+    }
+    
     botState.dipStartTick = null;
     botState.dipStartMomentum = null;
   }
