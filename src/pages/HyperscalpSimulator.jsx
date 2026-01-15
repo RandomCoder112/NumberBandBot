@@ -909,7 +909,7 @@ export default function HyperscalpSimulator() {
         {mode === 'simulator' && (
           <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
             <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Tape Generation</h3>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
             <div>
               <div className="flex items-center gap-1 mb-1">
                 <Label className="text-slate-400 text-xs">Starting Price</Label>
