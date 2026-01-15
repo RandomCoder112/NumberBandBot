@@ -15,15 +15,15 @@ function generateTapeData(basePrice = 4.20, durationSeconds = 60, ticksPerSecond
   
   // Pattern: sideways -> spike up -> dip -> stall -> bounce -> dip -> stall -> push
   const phases = [
-    { name: 'sideways', duration: 0.08, trend: 0, volatility: 0.015 },
-    { name: 'spike_up', duration: 0.22, trend: 0.018, volatility: 0.045 },
-    { name: 'dip', duration: 0.12, trend: -0.010, volatility: 0.028 },
-    { name: 'stall', duration: 0.06, trend: 0, volatility: 0.003 },
-    { name: 'bounce', duration: 0.15, trend: 0.014, volatility: 0.038 },
-    { name: 'mini_dip', duration: 0.10, trend: -0.006, volatility: 0.022 },
-    { name: 'stall2', duration: 0.05, trend: 0, volatility: 0.004 },
-    { name: 'final_push', duration: 0.12, trend: 0.012, volatility: 0.032 },
-    { name: 'final_dip', duration: 0.10, trend: -0.007, volatility: 0.025 },
+    { name: 'sideways', duration: 0.08, trend: 0, volatility: 0.035 },
+    { name: 'spike_up', duration: 0.22, trend: 0.025, volatility: 0.075 },
+    { name: 'dip', duration: 0.12, trend: -0.018, volatility: 0.055 },
+    { name: 'stall', duration: 0.06, trend: 0, volatility: 0.008 },
+    { name: 'bounce', duration: 0.15, trend: 0.020, volatility: 0.065 },
+    { name: 'mini_dip', duration: 0.10, trend: -0.012, volatility: 0.045 },
+    { name: 'stall2', duration: 0.05, trend: 0, volatility: 0.010 },
+    { name: 'final_push', duration: 0.12, trend: 0.018, volatility: 0.058 },
+    { name: 'final_dip', duration: 0.10, trend: -0.014, volatility: 0.050 },
   ];
   
   let currentTick = 0;
