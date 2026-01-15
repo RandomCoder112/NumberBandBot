@@ -121,6 +121,10 @@ function processTickForBot(botState, tick) {
   if (delta > 0.003) {
     botState.momentum += 1;
     botState.unchangedTicks = 0;
+    // Track peak momentum
+    if (botState.momentum > botState.peakMomentum) {
+      botState.peakMomentum = botState.momentum;
+    }
   } else if (delta < -0.003) {
     botState.momentum -= 1;
     botState.unchangedTicks = 0;
