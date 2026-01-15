@@ -220,15 +220,19 @@ function processTickForBot(botState, tick) {
       shouldSell = true;
       reason = 'PROFIT_STALL';
     }
-    // EXIT 2: "if it starts to go down sell right away"
-    // The NUMBER (momentum) starts decreasing after entry
-    else if (botState.momentum < botState.prevMomentum) {
-      shouldSell = true;
-      reason = 'NUMBER_DOWN';
+    // EXIT 2: "give it some room" - don't exit immediately, wait for sustained drop
+    // Check if momentum has been consistently dropping (2+ ticks down)
+    else if (botState.velocityHistory.length >= 2) {
+      const recentVelocities = botState.velocityHistory.slice(-2);
+      const sustainedDrop = recentVelocities.every(v => v < -0.3);
+      if (sustainedDrop && momentumSinceEntry < -1) {
+        shouldSell = true;
+        reason = 'SUSTAINED_DROP';
+      }
     }
     // EXIT 3: "if the number is going down more then some miliseconds after entry"
-    // Momentum has dropped significantly from entry point
-    else if (momentumSinceEntry < -stopLossMomentumDrop) {
+    // Momentum has dropped significantly from entry point - stop loss
+    if (momentumSinceEntry < -stopLossMomentumDrop) {
       shouldSell = true;
       reason = 'STOP_LOSS';
     }
@@ -248,11 +252,18 @@ function processTickForBot(botState, tick) {
         momentum: botState.momentum
       };
       
-      // Reset state
+      // After exit, look for next entry opportunity
       botState.position = null;
-      botState.state = 'IDLE';
-      botState.momentum = 0;
-      botState.prevMomentum = 0;
+      if (reason === 'STOP_LOSS') {
+        // Still dipping, look for consolidation/next entry
+        botState.state = 'BUILDING_UP';
+        // Keep momentum counter to track if it continues building or dips again
+      } else {
+        // Profit taken, reset
+        botState.state = 'IDLE';
+        botState.momentum = 0;
+        botState.prevMomentum = 0;
+      }
       botState.dipStartTick = null;
       botState.dipStartMomentum = null;
     }
