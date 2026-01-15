@@ -80,6 +80,7 @@ function generateTapeData(basePrice = 4.20, durationSeconds = 60, ticksPerSecond
 }
 
 // NUMBER THEORY BAND BOT LOGIC - Exact implementation
+// NUMBER THEORY BAND BOT LOGIC - Exact implementation
 function initBotState(params) {
   return {
     momentum: 0,
@@ -91,8 +92,9 @@ function initBotState(params) {
     position: null,
     velocityHistory: [],
     unchangedTicks: 0,
-    peakMomentum: 0, // Track highest momentum in current surge
-    historicalPeakMomentum: 0, // Remember peak even after consolidation
+    peakMomentum: 0,
+    historicalPeakMomentum: 0,
+    surgeStartPrice: null, // Track price when momentum surge started
     params
   };
 }
