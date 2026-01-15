@@ -885,8 +885,8 @@ export default function HyperscalpSimulator() {
             Sells when momentum rises then stalls, or immediately if it drops after entry. Pure tick-based logic - no indicators.
           </p>
         </Card>
+        </div>
       </div>
-    </div>
     </TooltipProvider>
   );
 }
