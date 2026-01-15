@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Play, Pause, RotateCcw, HelpCircle, TrendingUp, Activity } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceDot } from 'recharts';
-import { base44 } from "@/api/base44Client";
+// Removed Base44 client - using direct API calls instead
 
 // Generate realistic small-cap tape data
 function generateTapeData(basePrice = 4.20, durationSeconds = 90, ticksPerSecond = 12, options = {}) {
@@ -498,7 +498,11 @@ export default function HyperscalpSimulator() {
     setIsPlaying(false);
     setBotRunning(false);
     setBotLogs([]);
-    botStateRef.current = initBotState(params);
+    setCurrentState(null);
+    // Only reset bot state for simulator mode
+    if (mode === 'simulator') {
+      botStateRef.current = initBotState(params);
+    }
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
@@ -507,10 +511,10 @@ export default function HyperscalpSimulator() {
   };
 
   const startLiveMode = () => {
+    console.log("werwr");
     if (!ticker || shareQty <= 0) return;
 
     setBotRunning(true);
-    botStateRef.current = initBotState(params);
     liveDataRef.current = [];
     setTrades([]);
     setBotLogs([]);
@@ -518,107 +522,140 @@ export default function HyperscalpSimulator() {
     const addLog = (message) => {
       setBotLogs(prev => [...prev.slice(-50), { time: new Date().toLocaleTimeString(), message }]);
     };
-
+    
     addLog(`Starting live mode for ${ticker}`);
 
-    // Connect to backend WebSocket proxy
+    // Connect to backend WebSocket - bot logic runs on server
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
-    const wsUrl = `${protocol}//${host}/api/functions/alpacaWebSocket?ticker=${ticker}`;
+    
+    // Encode params as query parameter
+    const paramsStr = encodeURIComponent(JSON.stringify(params));
+    const wsUrl = `${protocol}//${host}/api/functions/alpacaWebSocket?ticker=${ticker}&params=${paramsStr}`;
     
     addLog(`Connecting to: ${wsUrl}`);
+    console.log('Connecting to WebSocket:', wsUrl);
     
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
-    let lastBid = null;
-    let lastAsk = null;
-    let tickCounter = 0;
-
     ws.onopen = () => {
-      addLog('Connected to Alpaca stream');
+      addLog('✅ Connected to WebSocket server');
+      console.log('WebSocket opened successfully');
     };
 
     ws.onmessage = async (event) => {
-      const data = JSON.parse(event.data);
+      try {
+        const data = JSON.parse(event.data);
+        console.log('Received from server:', data.type, data);
 
-      if (data.type === 'quote') {
-        lastBid = data.bid;
-        lastAsk = data.ask;
-
-        const mid = (lastBid + lastAsk) / 2;
-        const spread = lastAsk - lastBid;
-
-        const tick = {
-          tick: tickCounter++,
-          time: new Date().toISOString(),
-          bid: lastBid,
-          ask: lastAsk,
-          mid,
-          spread,
-          volume: data.bidSize + data.askSize
-        };
-
-        liveDataRef.current.push(tick);
-        setTapeData([...liveDataRef.current]);
-
-        // Process tick through bot
-        const result = processTickForBot(botStateRef.current, tick);
-
-        // Log state changes
-        if (result.botState.state !== botStateRef.current.state) {
-          addLog(`State changed: ${botStateRef.current.state} → ${result.botState.state}`);
+        // Server sends processed tick data
+        if (data.type === 'tick') {
+          const { tick, botState } = data;
+          
+          // Add tick to live data
+          liveDataRef.current.push(tick);
+          setTapeData([...liveDataRef.current]);
+          
+          // Update bot state display (store historicalPeakPrice for display)
+          setCurrentState({
+            momentum: botState.momentum,
+            velocity: botState.velocity,
+            state: botState.state,
+            unchangedTicks: botState.unchangedTicks,
+            historicalPeakPrice: botState.historicalPeakPrice
+          });
+          setCurrentTick(tick.tick);
         }
-
-        if (result.tradeInfo) {
+        // Trade signal from server
+        else if (data.type === 'trade') {
+          const tradeInfo = data;
+          addLog(
+            tradeInfo.type === 'BUY' 
+              ? `🟢 BUY signal at $${tradeInfo.price.toFixed(3)} (M=${tradeInfo.momentum})`
+              : `🔴 SELL signal at $${tradeInfo.price.toFixed(3)} (${tradeInfo.reason}, ${tradeInfo.size})`
+          );
+          
           // Execute trade via Alpaca
-          if (result.tradeInfo.type === 'BUY') {
-            addLog(`🟢 BUY signal at $${result.tradeInfo.price.toFixed(3)} (M=${result.tradeInfo.momentum})`);
+          if (tradeInfo.type === 'BUY') {
             try {
-              await base44.functions.invoke('alpacaStream', {
-                action: 'placeOrder',
-                ticker: ticker,
-                quantity: shareQty
+              const response = await fetch('/api/functions/alpacaStream', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  action: 'placeOrder',
+                  ticker: ticker,
+                  quantity: shareQty
+                })
               });
+              if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Order failed');
+              }
               addLog(`✅ BUY order placed: ${shareQty} shares`);
             } catch (err) {
               addLog(`❌ BUY order failed: ${err.message}`);
             }
-          } else if (result.tradeInfo.type === 'SELL') {
-            const size = result.tradeInfo.size === '50%' ? Math.floor(shareQty / 2) : shareQty;
-            addLog(`🔴 SELL signal at $${result.tradeInfo.price.toFixed(3)} (${result.tradeInfo.reason}, ${result.tradeInfo.size})`);
+          } else if (tradeInfo.type === 'SELL') {
+            const size = tradeInfo.size === '50%' ? Math.floor(shareQty / 2) : shareQty;
             try {
-              await base44.functions.invoke('alpacaStream', {
-                action: 'closePosition',
-                ticker: ticker,
-                quantity: size
+              const response = await fetch('/api/functions/alpacaStream', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  action: 'closePosition',
+                  ticker: ticker,
+                  quantity: size
+                })
               });
-              addLog(`✅ SELL order placed: ${size} shares | P&L: ${result.tradeInfo.profitPercent}%`);
+              if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Order failed');
+              }
+              addLog(`✅ SELL order placed: ${size} shares | P&L: ${tradeInfo.profitPercent}%`);
             } catch (err) {
               addLog(`❌ SELL order failed: ${err.message}`);
             }
           }
 
-          setTrades(prev => [...prev, result.tradeInfo]);
+          setTrades(prev => [...prev, tradeInfo]);
         }
-
-        setCurrentState(result.debugInfo);
-        setCurrentTick(tickCounter);
-      } else if (data.type === 'status') {
-        addLog(`Status: ${data.message}`);
-      } else if (data.type === 'error') {
-        addLog(`⚠️ Error: ${data.message}`);
+        // State change notification
+        else if (data.type === 'stateChange') {
+          addLog(`🔄 State: ${data.from} → ${data.to}`);
+        }
+        // Status messages
+        else if (data.type === 'status') {
+          addLog(`ℹ️ ${data.message}`);
+        }
+        // Error messages
+        else if (data.type === 'error') {
+          addLog(`⚠️ Error: ${data.message}`);
+          console.error('Server error:', data.message);
+        }
+      } catch (err) {
+        console.error('Error parsing WebSocket message:', err, event.data);
+        addLog(`⚠️ Parse error: ${err.message}`);
       }
     };
 
     ws.onerror = (error) => {
       console.error('WebSocket error:', error);
-      addLog(`⚠️ WebSocket error: ${error.message || 'Connection failed'}`);
+      addLog(`⚠️ WebSocket error: Connection failed`);
+      addLog('💡 Make sure the backend server is running (npm run dev:server)');
     };
 
     ws.onclose = (event) => {
       console.log('WebSocket closed:', event.code, event.reason);
-      addLog(`Disconnected: ${event.reason || 'Connection closed'}`);
+      const reason = event.reason || `Code: ${event.code}`;
+      addLog(`🔌 Disconnected: ${reason}`);
+      if (event.code !== 1000) {
+        addLog('💡 Server may have stopped or connection was refused');
+      }
       setBotRunning(false);
     };
   };
@@ -815,7 +852,7 @@ export default function HyperscalpSimulator() {
           <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
             <div className="text-xs text-slate-400 mb-1">Peak Price</div>
             <div className="text-2xl font-bold text-purple-400">
-              ${(botStateRef.current?.historicalPeakPrice || 0).toFixed(3)}
+              ${(currentState?.historicalPeakPrice || 0).toFixed(3)}
             </div>
           </Card>
           <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">

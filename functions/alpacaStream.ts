@@ -1,17 +1,11 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
-
 const ALPACA_API_KEY = Deno.env.get("ALPACA_API_KEY");
 const ALPACA_API_SECRET = Deno.env.get("ALPACA_API_SECRET");
 const ALPACA_BASE_URL = "https://paper-api.alpaca.markets";
 
 Deno.serve(async (req) => {
     try {
-        const base44 = createClientFromRequest(req);
-        const user = await base44.auth.me();
-        
-        if (!user) {
-            return Response.json({ error: 'Unauthorized' }, { status: 401 });
-        }
+        // Removed Base44 authentication - function now runs independently
+        // You can add your own authentication logic here if needed
 
         const { action, ticker, quantity, orderId } = await req.json();
 

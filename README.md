@@ -1,39 +1,58 @@
-**Welcome to your Base44 project** 
+**Number Band Bot**
 
 **About**
 
-View and Edit  your app on [Base44.com](http://Base44.com) 
-
-This project contains everything you need to run your app locally.
-
-**Edit the code in your local development environment**
-
-Any change pushed to the repo will also be reflected in the Base44 Builder.
+A trading bot simulator and live trading application for hyperscalp strategies.
 
 **Prerequisites:** 
 
-1. Clone the repository using the project's Git URL 
+1. Clone the repository
 2. Navigate to the project directory
 3. Install dependencies: `npm install`
-4. Create an `.env.local` file and set the right environment variables
+
+**Environment Setup**
+
+For live trading features, create a `.env` file in the root directory:
 
 ```
-VITE_BASE44_APP_ID=your_app_id
-VITE_BASE44_APP_BASE_URL=your_backend_url
-
-e.g.
-VITE_BASE44_APP_ID=cbef744a8545c389ef439ea6
-VITE_BASE44_APP_BASE_URL=https://my-to-do-list-81bfaad7.base44.app
+ALPACA_API_KEY=your_api_key_here
+ALPACA_API_SECRET=your_api_secret_here
 ```
 
-Run the app: `npm run dev`
+**Run the app:**
 
-**Publish your changes**
+### Option 1: Run both frontend and backend together (Recommended)
+```bash
+npm run dev:all
+```
 
-Open [Base44.com](http://Base44.com) and click on Publish.
+This will start:
+- Backend server on port 3001 (handles Alpaca WebSocket and API)
+- Frontend dev server on port 5173
 
-**Docs & Support**
+### Option 2: Run separately
 
-Documentation: [https://docs.base44.com/Integrations/Using-GitHub](https://docs.base44.com/Integrations/Using-GitHub)
+Terminal 1 - Backend:
+```bash
+npm run dev:server
+```
 
-Support: [https://app.base44.com/support](https://app.base44.com/support)
+Terminal 2 - Frontend:
+```bash
+npm run dev
+```
+
+The app will run on `http://localhost:5173` (or the next available port).
+
+**Build for production:**
+
+```bash
+npm run build
+```
+
+**Development:**
+
+- The app includes a simulator mode for testing trading strategies
+- Live mode requires Alpaca API credentials (set in `.env` file)
+- The backend server provides WebSocket proxying to Alpaca and handles trade execution
+- Check the terminal for detailed logs when using live mode
