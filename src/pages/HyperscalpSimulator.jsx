@@ -171,16 +171,14 @@ function processTickForBot(botState, tick) {
     botState.prevMomentum = 0;
     botState.peakMomentum = 0;
     
-    // If historical momentum was strong AND price still in range, keep watching for dips
-    if (botState.historicalPeakMomentum >= minMomentumForSpike && stillInSurgeRange) {
+    // Keep watching for dips if stock spiked before and price hasn't completely flushed
+    if (botState.historicalPeakMomentum > 0 && stillInSurgeRange) {
       botState.state = 'BUILDING_UP';
-    } else if (!stillInSurgeRange) {
-      // Price flushed down, reset everything
+    } else if (!stillInSurgeRange || botState.historicalPeakMomentum === 0) {
+      // Price flushed down completely OR never spiked - now truly idle
       botState.state = 'IDLE';
       botState.historicalPeakMomentum = 0;
       botState.surgeStartPrice = null;
-    } else {
-      botState.state = 'IDLE';
     }
     
     botState.dipStartTick = null;
@@ -245,7 +243,14 @@ function processTickForBot(botState, tick) {
     
     // If momentum goes back up significantly, exit dipping state without buying
     if (botState.momentum > botState.prevMomentum && momentumDropped < 1) {
-      botState.state = 'IDLE';
+      // Go back to watching for dips if we had a strong surge
+      if (botState.historicalPeakMomentum > 0 && stillInSurgeRange) {
+        botState.state = 'BUILDING_UP';
+      } else {
+        botState.state = 'IDLE';
+        botState.historicalPeakMomentum = 0;
+        botState.surgeStartPrice = null;
+      }
       botState.dipStartTick = null;
       botState.dipStartMomentum = null;
     }
