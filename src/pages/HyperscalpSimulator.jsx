@@ -417,6 +417,7 @@ export default function HyperscalpSimulator() {
   const [speed, setSpeed] = useState(50); // ms per tick
   const [trades, setTrades] = useState([]);
   const [currentState, setCurrentState] = useState(null);
+  const [botLogs, setBotLogs] = useState([]);
   
   const botStateRef = useRef(null);
   const animationRef = useRef(null);
@@ -496,6 +497,7 @@ export default function HyperscalpSimulator() {
     setTrades([]);
     setIsPlaying(false);
     setBotRunning(false);
+    setBotLogs([]);
     botStateRef.current = initBotState(params);
     if (wsRef.current) {
       wsRef.current.close();
@@ -511,6 +513,13 @@ export default function HyperscalpSimulator() {
     botStateRef.current = initBotState(params);
     liveDataRef.current = [];
     setTrades([]);
+    setBotLogs([]);
+
+    const addLog = (message) => {
+      setBotLogs(prev => [...prev.slice(-50), { time: new Date().toLocaleTimeString(), message }]);
+    };
+
+    addLog(`Starting live mode for ${ticker}`);
 
     // Connect to backend WebSocket proxy
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -523,7 +532,7 @@ export default function HyperscalpSimulator() {
     let tickCounter = 0;
 
     ws.onopen = () => {
-      console.log('Connected to live stream');
+      addLog('Connected to Alpaca stream');
     };
 
     ws.onmessage = async (event) => {
@@ -552,28 +561,37 @@ export default function HyperscalpSimulator() {
         // Process tick through bot
         const result = processTickForBot(botStateRef.current, tick);
 
+        // Log state changes
+        if (result.botState.state !== botStateRef.current.state) {
+          addLog(`State changed: ${botStateRef.current.state} → ${result.botState.state}`);
+        }
+
         if (result.tradeInfo) {
           // Execute trade via Alpaca
           if (result.tradeInfo.type === 'BUY') {
+            addLog(`🟢 BUY signal at $${result.tradeInfo.price.toFixed(3)} (M=${result.tradeInfo.momentum})`);
             try {
               await base44.functions.invoke('alpacaStream', {
                 action: 'placeOrder',
                 ticker: ticker,
                 quantity: shareQty
               });
+              addLog(`✅ BUY order placed: ${shareQty} shares`);
             } catch (err) {
-              console.error('Trade error:', err);
+              addLog(`❌ BUY order failed: ${err.message}`);
             }
           } else if (result.tradeInfo.type === 'SELL') {
+            const size = result.tradeInfo.size === '50%' ? Math.floor(shareQty / 2) : shareQty;
+            addLog(`🔴 SELL signal at $${result.tradeInfo.price.toFixed(3)} (${result.tradeInfo.reason}, ${result.tradeInfo.size})`);
             try {
-              const size = result.tradeInfo.size === '50%' ? Math.floor(shareQty / 2) : shareQty;
               await base44.functions.invoke('alpacaStream', {
                 action: 'closePosition',
                 ticker: ticker,
                 quantity: size
               });
+              addLog(`✅ SELL order placed: ${size} shares | P&L: ${result.tradeInfo.profitPercent}%`);
             } catch (err) {
-              console.error('Trade error:', err);
+              addLog(`❌ SELL order failed: ${err.message}`);
             }
           }
 
@@ -583,18 +601,19 @@ export default function HyperscalpSimulator() {
         setCurrentState(result.debugInfo);
         setCurrentTick(tickCounter);
       } else if (data.type === 'status') {
-        console.log('Status:', data.message);
+        addLog(`Status: ${data.message}`);
       } else if (data.type === 'error') {
-        console.error('Stream error:', data.message);
+        addLog(`⚠️ Error: ${data.message}`);
       }
     };
 
     ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
+      addLog(`⚠️ WebSocket error`);
       setBotRunning(false);
     };
 
     ws.onclose = () => {
+      addLog('Disconnected from stream');
       setBotRunning(false);
     };
   };
@@ -711,9 +730,25 @@ export default function HyperscalpSimulator() {
               </>
             )}
           </div>
-        </div>
+          </div>
 
-        {/* Live Mode Controls */}
+          {/* Progress Bar - Only show in simulator mode */}
+          {mode === 'simulator' && (
+          <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-xs text-slate-400">Progress: {progress}%</span>
+              <span className="text-xs text-slate-400">Tick {currentTick} / {tapeData?.length || 0}</span>
+            </div>
+            <div className="w-full bg-slate-700 rounded-full h-2">
+              <div 
+                className="bg-gradient-to-r from-emerald-500 to-cyan-500 h-2 rounded-full transition-all duration-200"
+                style={{ width: `${progress}%` }}
+              ></div>
+            </div>
+          </div>
+          )}
+
+          {/* Live Mode Controls */}
         {mode === 'live' && (
           <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
             <div className="grid grid-cols-2 gap-4">
@@ -747,20 +782,6 @@ export default function HyperscalpSimulator() {
             )}
           </Card>
         )}
-        
-        {/* Progress Bar */}
-        <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-xs text-slate-400">Progress: {progress}%</span>
-            <span className="text-xs text-slate-400">Tick {currentTick} / {tapeData?.length || 0}</span>
-          </div>
-          <div className="w-full bg-slate-700 rounded-full h-2">
-            <div 
-              className="bg-gradient-to-r from-emerald-500 to-cyan-500 h-2 rounded-full transition-all duration-200"
-              style={{ width: `${progress}%` }}
-            ></div>
-          </div>
-        </div>
         
         {/* Live Stats Row */}
         <div className="grid grid-cols-7 gap-3">
@@ -1183,6 +1204,24 @@ export default function HyperscalpSimulator() {
           </div>
         </Card>
         
+        {/* Bot Activity Logs */}
+        {mode === 'live' && (
+          <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
+            <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Bot Activity Log</h3>
+            <div className="space-y-1 max-h-[200px] overflow-y-auto">
+              {botLogs.length === 0 && (
+                <p className="text-slate-600 text-center py-4 text-sm">Waiting for activity...</p>
+              )}
+              {botLogs.slice().reverse().map((log, idx) => (
+                <div key={idx} className="flex items-start gap-2 text-xs font-mono text-slate-300 bg-slate-900/50 p-2 rounded">
+                  <span className="text-slate-500">{log.time}</span>
+                  <span className="flex-1">{log.message}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
         {/* Trade Log */}
         <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
           <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Trade Log</h3>
@@ -1205,7 +1244,7 @@ export default function HyperscalpSimulator() {
                     {trade.type}
                   </span>
                   <span className="text-slate-300">@ ${trade.price.toFixed(3)}</span>
-                  <span className="text-slate-600 text-xs">t={trade.time}s</span>
+                  {mode === 'simulator' && <span className="text-slate-600 text-xs">t={trade.time}s</span>}
                   <span className="text-slate-600 text-xs">M={trade.momentum}</span>
                 </div>
                 {trade.profit !== undefined && (
