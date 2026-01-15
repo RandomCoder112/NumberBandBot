@@ -428,6 +428,13 @@ export default function HyperscalpSimulator() {
     ask: tick.ask
   })) || [];
   
+  // Prepare tape display (last 15 ticks with direction)
+  const recentTicks = tapeData?.slice(Math.max(0, currentTick - 14), currentTick + 1).map((tick, idx, arr) => {
+    const prevTick = idx > 0 ? arr[idx - 1] : null;
+    const direction = prevTick ? (tick.mid > prevTick.mid ? 'up' : tick.mid < prevTick.mid ? 'down' : 'flat') : 'flat';
+    return { ...tick, direction };
+  }).reverse() || [];
+  
   const buyTrades = trades.filter(t => t.type === 'BUY');
   const sellTrades = trades.filter(t => t.type === 'SELL');
   
