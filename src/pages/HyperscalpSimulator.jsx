@@ -155,6 +155,11 @@ function processTickForBot(botState, tick) {
   const avgVelocity = botState.velocityHistory.reduce((a, b) => a + b, 0) / 
                       (botState.velocityHistory.length || 1);
   
+  // Check if price is still in surge range (not down more than 50% from surge start)
+  const priceDownFromSurge = botState.surgeStartPrice ? 
+    ((botState.surgeStartPrice - mid) / botState.surgeStartPrice) : 0;
+  const stillInSurgeRange = priceDownFromSurge < 0.5; // Price hasn't dropped 50% from surge start
+  
   // Consolidation detection: Reset momentum to 0 if price unchanged for several ticks
   if (botState.unchangedTicks >= consolidationTicks && botState.state !== 'HOLDING') {
     // Save historical peak before resetting
@@ -181,11 +186,6 @@ function processTickForBot(botState, tick) {
     botState.dipStartTick = null;
     botState.dipStartMomentum = null;
   }
-  
-  // Check if price is still in surge range (not down more than 50% from surge start)
-  const priceDownFromSurge = botState.surgeStartPrice ? 
-    ((botState.surgeStartPrice - mid) / botState.surgeStartPrice) : 0;
-  const stillInSurgeRange = priceDownFromSurge < 0.5; // Price hasn't dropped 50% from surge start
   
   // STATE MACHINE
   if (botState.state === 'IDLE') {
