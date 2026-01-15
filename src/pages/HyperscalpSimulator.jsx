@@ -112,6 +112,9 @@ function processTickForBot(botState, tick) {
     delta = mid - botState.prevMid;
   }
   
+  // Store previous momentum before updating
+  botState.prevMomentum = botState.momentum;
+  
   // Update momentum counter: +1 for up tick, -1 for down tick
   if (delta > 0.003) {
     botState.momentum += 1;
@@ -123,34 +126,25 @@ function processTickForBot(botState, tick) {
     botState.unchangedTicks += 1;
   }
   
-  // Track momentum history for velocity calculation
-  botState.momentumHistory.push(botState.momentum);
-  if (botState.momentumHistory.length > 6) {
-    botState.momentumHistory.shift();
-  }
+  // Calculate velocity (rate of change in momentum) - THE SPEED
+  const momentumDelta = botState.momentum - botState.prevMomentum;
   
-  // Calculate velocity (rate of change in momentum)
-  let velocity = 0;
-  if (botState.momentumHistory.length >= 3) {
-    const recentChange = botState.momentumHistory[botState.momentumHistory.length - 1] - 
-                        botState.momentumHistory[botState.momentumHistory.length - 3];
-    velocity = recentChange / 2; // avg per tick
-  }
-  
-  botState.velocityHistory.push(velocity);
+  botState.velocityHistory.push(momentumDelta);
   if (botState.velocityHistory.length > 5) {
     botState.velocityHistory.shift();
   }
   
-  // Calculate average velocity (for smoothing)
+  // Calculate average velocity (for smoothing) - how fast the NUMBER is changing
   const avgVelocity = botState.velocityHistory.reduce((a, b) => a + b, 0) / 
                       (botState.velocityHistory.length || 1);
   
   // Consolidation detection: Reset momentum to 0 if price unchanged for several ticks
   if (botState.unchangedTicks >= consolidationTicks && botState.state !== 'HOLDING') {
     botState.momentum = 0;
+    botState.prevMomentum = 0;
     botState.state = 'IDLE';
     botState.dipStartTick = null;
+    botState.dipStartMomentum = null;
   }
   
   // STATE MACHINE
@@ -161,10 +155,12 @@ function processTickForBot(botState, tick) {
     }
   }
   else if (botState.state === 'BUILDING_UP') {
-    // Spike detected, now watching for dip (momentum starting to decrease)
-    if (velocity < -0.5) { // momentum starting to go down
+    // Spike detected, now watching for THE NUMBER to start going down
+    // "when that number is starting to go down this is a dip"
+    if (botState.momentum < botState.prevMomentum && botState.momentum >= 0) {
       botState.state = 'DIPPING';
       botState.dipStartTick = tick.tick;
+      botState.dipStartMomentum = botState.prevMomentum; // peak before dip
     }
   }
   else if (botState.state === 'DIPPING') {
