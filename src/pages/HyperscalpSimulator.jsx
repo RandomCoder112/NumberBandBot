@@ -55,9 +55,10 @@ function generateTapeData(basePrice = 4.20, durationSeconds = 60, ticksPerSecond
       const ask = Math.round((price + halfSpread) * 100) / 100;
       const mid = (bid + ask) / 2;
       
-      let volume = Math.floor(Math.random() * 400) + 150;
-      if (phase.name === 'spike_up') volume *= 3.5;
-      if (phase.name === 'bounce' || phase.name === 'final_push') volume *= 2.2;
+      let volume = Math.floor(Math.random() * 600) + 150;
+      if (phase.name === 'spike_up') volume *= (3 + Math.random() * 2);
+      if (phase.name === 'bounce' || phase.name === 'final_push') volume *= (2 + Math.random() * 1.5);
+      if (isFastMove) volume *= 1.8;
       
       ticks.push({
         tick: currentTick,
