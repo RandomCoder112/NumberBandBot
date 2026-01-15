@@ -1,30 +1,41 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
 Deno.serve(async (req) => {
-  const base44 = createClientFromRequest(req);
-  const user = await base44.auth.me();
-  
-  if (!user) {
-    return new Response('Unauthorized', { status: 401 });
-  }
+  try {
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me();
+    
+    if (!user) {
+      return new Response('Unauthorized', { status: 401 });
+    }
 
-  const url = new URL(req.url);
-  const ticker = url.searchParams.get('ticker');
-  
-  if (!ticker) {
-    return new Response('Missing ticker parameter', { status: 400 });
-  }
+    const url = new URL(req.url);
+    const ticker = url.searchParams.get('ticker');
+    
+    if (!ticker) {
+      return new Response('Missing ticker parameter', { status: 400 });
+    }
 
-  // Upgrade to WebSocket
-  const upgrade = req.headers.get("upgrade") || "";
-  if (upgrade.toLowerCase() !== "websocket") {
-    return new Response("Expected WebSocket", { status: 426 });
-  }
+    // Upgrade to WebSocket
+    const upgrade = req.headers.get("upgrade") || "";
+    if (upgrade.toLowerCase() !== "websocket") {
+      return new Response("Expected WebSocket", { status: 426 });
+    }
 
-  const { socket, response } = Deno.upgradeWebSocket(req);
+    const { socket, response } = Deno.upgradeWebSocket(req);
+    
+    console.log(`WebSocket upgrade successful for ticker: ${ticker}`);
   
   const apiKey = Deno.env.get('ALPACA_API_KEY');
   const apiSecret = Deno.env.get('ALPACA_API_SECRET');
+  
+  if (!apiKey || !apiSecret) {
+    console.error('Missing Alpaca credentials');
+    socket.close(1011, 'Missing Alpaca credentials');
+    return response;
+  }
+  
+  console.log('Alpaca credentials found');
   
   let alpacaWs = null;
   
@@ -112,10 +123,19 @@ Deno.serve(async (req) => {
   };
   
   socket.onclose = () => {
+    console.log('Client WebSocket closed');
     if (alpacaWs) {
       alpacaWs.close();
     }
   };
   
+  socket.onerror = (err) => {
+    console.error('Client WebSocket error:', err);
+  };
+  
   return response;
+  } catch (error) {
+    console.error('Function error:', error);
+    return new Response(`Error: ${error.message}`, { status: 500 });
+  }
 });

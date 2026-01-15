@@ -612,12 +612,13 @@ export default function HyperscalpSimulator() {
     };
 
     ws.onerror = (error) => {
-      addLog(`⚠️ WebSocket error`);
-      setBotRunning(false);
+      console.error('WebSocket error:', error);
+      addLog(`⚠️ WebSocket error: ${error.message || 'Connection failed'}`);
     };
 
-    ws.onclose = () => {
-      addLog('Disconnected from stream');
+    ws.onclose = (event) => {
+      console.log('WebSocket closed:', event.code, event.reason);
+      addLog(`Disconnected: ${event.reason || 'Connection closed'}`);
       setBotRunning(false);
     };
   };
