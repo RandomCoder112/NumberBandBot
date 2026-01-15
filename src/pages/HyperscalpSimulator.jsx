@@ -78,12 +78,13 @@ function generateTapeData(basePrice = 4.20, durationSeconds = 60, ticksPerSecond
 function initBotState(params) {
   return {
     momentum: 0,
+    prevMomentum: 0,
     prevMid: null,
     state: 'IDLE', // IDLE, BUILDING_UP, DIPPING, HOLDING
     dipStartTick: null,
+    dipStartMomentum: null,
     position: null,
     velocityHistory: [],
-    momentumHistory: [],
     unchangedTicks: 0,
     params
   };
