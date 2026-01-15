@@ -196,11 +196,9 @@ function processTickForBot(botState, tick) {
   }
   else if (botState.state === 'BUILDING_UP') {
     // Spike detected, now watching for THE NUMBER to start going down
-    // OR if momentum already negative but:
-    // 1. Historical data shows strong surge (50%+ of peak)
-    // 2. Price is still in surge range (not flushing down)
-    const hasStrongHistory = botState.historicalPeakMomentum > 0 && 
-                             Math.abs(botState.momentum) >= (botState.historicalPeakMomentum * 0.5);
+    // After consolidation: if we had a strong surge historically and price is still in range,
+    // watch for ANY dip (momentum going negative)
+    const hasStrongHistory = botState.historicalPeakMomentum >= minMomentumForSpike;
     
     if ((botState.momentum < botState.prevMomentum && botState.momentum >= 0) || 
         (botState.momentum < 0 && hasStrongHistory && stillInSurgeRange)) {
