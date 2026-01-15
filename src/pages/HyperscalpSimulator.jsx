@@ -113,9 +113,11 @@ function initBotState(params) {
     unchangedTicks: 0,
     peakMomentum: 0,
     historicalPeakPrice: 0, // Track highest price reached
+    positionSize: 0, // Track position size: 0 = no position, 0.5 = half, 1.0 = full
+    hasPartialExited: false, // Track if we already did a partial exit
     params
-  };
-}
+    };
+    }
 
 function processTickForBot(botState, tick) {
   const { mid, spread, bid, ask } = tick;
@@ -239,6 +241,8 @@ function processTickForBot(botState, tick) {
         entryMid: mid,
         entryMomentum: botState.momentum
       };
+      botState.positionSize = 1.0;
+      botState.hasPartialExited = false;
       action = 'BUY';
       tradeInfo = {
         type: 'BUY',
@@ -267,17 +271,33 @@ function processTickForBot(botState, tick) {
     const momentumSinceEntry = botState.momentum - botState.position.entryMomentum;
     const pnl = mid - botState.position.entryMid;
     const pnlPercent = (pnl / botState.position.entryMid) * 100;
-    
+
     let shouldSell = false;
+    let isPartialExit = false;
     let reason = '';
-    
+
     // EXIT 1: "sell into the number going up and stopping a bit"
     // Number went up after entry, now velocity is slowing/stopping
     if (momentumSinceEntry >= profitMomentumRise && Math.abs(avgVelocity) < stallVelocityThreshold) {
       shouldSell = true;
       reason = 'PROFIT_STALL';
+      // If partial exits enabled and we haven't done one yet, only exit half
+      if (botState.params.usePartialExits && !botState.hasPartialExited && botState.positionSize === 1.0) {
+        isPartialExit = true;
+      }
     }
-    // EXIT 2: "give it some room" - don't exit immediately, wait for sustained drop
+    // EXIT 2: If we did partial exit, check if price drops after - exit remaining position
+    else if (botState.hasPartialExited && botState.positionSize === 0.5) {
+      if (botState.velocityHistory.length >= 2) {
+        const recentVelocities = botState.velocityHistory.slice(-2);
+        const sustainedDrop = recentVelocities.every(v => v < -0.3);
+        if (sustainedDrop && momentumSinceEntry < -1) {
+          shouldSell = true;
+          reason = 'DROP_AFTER_PARTIAL';
+        }
+      }
+    }
+    // EXIT 3: "give it some room" - don't exit immediately, wait for sustained drop
     // Check if momentum has been consistently dropping (2+ ticks down)
     else if (botState.velocityHistory.length >= 2) {
       const recentVelocities = botState.velocityHistory.slice(-2);
@@ -287,16 +307,17 @@ function processTickForBot(botState, tick) {
         reason = 'SUSTAINED_DROP';
       }
     }
-    // EXIT 3: "if the number is going down more then some miliseconds after entry"
+    // EXIT 4: "if the number is going down more then some miliseconds after entry"
     // Momentum has dropped significantly from entry point - stop loss
     if (momentumSinceEntry < -stopLossMomentumDrop) {
       shouldSell = true;
       reason = 'STOP_LOSS';
     }
-    
+
     if (shouldSell) {
       const exitPrice = bid;
-      const profit = exitPrice - botState.position.entryPrice;
+      const sizeExited = isPartialExit ? 0.5 : botState.positionSize;
+      const profit = (exitPrice - botState.position.entryPrice) * sizeExited;
       action = 'SELL';
       tradeInfo = {
         type: 'SELL',
@@ -306,32 +327,44 @@ function processTickForBot(botState, tick) {
         profit,
         profitPercent: pnlPercent.toFixed(2),
         reason,
-        momentum: botState.momentum
+        momentum: botState.momentum,
+        size: isPartialExit ? '50%' : (botState.positionSize === 0.5 ? '50%' : '100%')
       };
-      
-      // After exit, look for next entry opportunity
-      botState.position = null;
-      if (reason === 'STOP_LOSS' || reason === 'SUSTAINED_DROP') {
-        // If price hasn't flushed, immediately look for another dip
-        if (notFlushed) {
-          botState.state = 'BUILDING_UP';
+
+      if (isPartialExit) {
+        // Partial exit - keep half position
+        botState.positionSize = 0.5;
+        botState.hasPartialExited = true;
+        // Stay in HOLDING state, update entry momentum for next exit calc
+        botState.position.entryMomentum = botState.momentum;
+      } else {
+        // Full exit
+        botState.position = null;
+        botState.positionSize = 0;
+        botState.hasPartialExited = false;
+
+        if (reason === 'STOP_LOSS' || reason === 'SUSTAINED_DROP' || reason === 'DROP_AFTER_PARTIAL') {
+          // If price hasn't flushed, immediately look for another dip
+          if (notFlushed) {
+            botState.state = 'BUILDING_UP';
+          } else {
+            botState.state = 'IDLE';
+            botState.momentum = 0;
+            botState.prevMomentum = 0;
+            botState.peakMomentum = 0;
+            botState.historicalPeakPrice = 0;
+          }
         } else {
+          // Profit taken, reset everything
           botState.state = 'IDLE';
           botState.momentum = 0;
           botState.prevMomentum = 0;
           botState.peakMomentum = 0;
           botState.historicalPeakPrice = 0;
         }
-      } else {
-        // Profit taken, reset everything
-        botState.state = 'IDLE';
-        botState.momentum = 0;
-        botState.prevMomentum = 0;
-        botState.peakMomentum = 0;
-        botState.historicalPeakPrice = 0;
+        botState.dipStartTick = null;
+        botState.dipStartMomentum = null;
       }
-      botState.dipStartTick = null;
-      botState.dipStartMomentum = null;
     }
   }
   
@@ -369,7 +402,8 @@ export default function HyperscalpSimulator() {
     maxSpreadForEntry: 0.05,
     minMomentumForSpike: 5,
     consolidationTicks: 4,
-    minDipMomentumDrop: 3
+    minDipMomentumDrop: 3,
+    usePartialExits: false
   });
   
   const [tapeOptions, setTapeOptions] = useState({
@@ -741,7 +775,27 @@ export default function HyperscalpSimulator() {
         {/* Parameters */}
         <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
           <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Bot Parameters</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1">
+                  <Label className="text-slate-400 text-xs">Partial Exits</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="w-3 h-3 text-slate-500 cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="text-xs">Exit 50% on profit stall, keep rest until next stall or drop</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <Switch
+                  checked={params.usePartialExits}
+                  onCheckedChange={(checked) => setParams(p => ({...p, usePartialExits: checked}))}
+                  disabled={isPlaying}
+                />
+              </div>
+            </div>
             <div>
               <div className="flex items-center gap-1 mb-1">
                 <Label className="text-slate-400 text-xs">Min Dip Ticks</Label>
@@ -889,6 +943,7 @@ export default function HyperscalpSimulator() {
                     <span className={`font-mono font-semibold ${trade.profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                       {trade.profit >= 0 ? '+' : ''}{trade.profitPercent}%
                     </span>
+                    {trade.size && <span className="text-cyan-400 text-xs font-semibold">{trade.size}</span>}
                     <span className="text-slate-500 text-xs">({trade.reason})</span>
                   </div>
                 )}
