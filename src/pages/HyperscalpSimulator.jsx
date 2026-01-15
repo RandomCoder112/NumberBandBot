@@ -165,14 +165,22 @@ function processTickForBot(botState, tick) {
   }
   else if (botState.state === 'DIPPING') {
     const dipDuration = tick.tick - botState.dipStartTick;
-    const momentumDroppedEnough = botState.momentum < (minMomentumForSpike - minDipMomentumDrop);
+    const momentumDropped = botState.dipStartMomentum - botState.momentum;
     
-    // Wait for dip to slow down: velocity approaching zero, after dropping for good amount
+    // "the bot will realize the speed of the dip is slowing down"
+    // Speed = velocity = how fast the number is changing
+    // Slowing down = velocity approaching 0 (was negative/decreasing, now near 0)
     const isSlowing = Math.abs(avgVelocity) < stallVelocityThreshold;
-    const spreadOk = spread <= maxSpreadForEntry;
+    
+    // "after a good amount of miliseconds dropped in a good certain time"
+    const droppedEnough = momentumDropped >= minDipMomentumDrop;
     const dipLongEnough = dipDuration >= minDipTicks;
     
-    if (dipLongEnough && momentumDroppedEnough && isSlowing && spreadOk && !botState.position) {
+    // Good fill condition
+    const spreadOk = spread <= maxSpreadForEntry;
+    
+    // BUY when: dip has gone down enough, for long enough time, and is now stalling
+    if (dipLongEnough && droppedEnough && isSlowing && spreadOk && !botState.position) {
       // BUY THE DIP
       botState.position = {
         entryTick: tick.tick,
@@ -189,6 +197,13 @@ function processTickForBot(botState, tick) {
         momentum: botState.momentum
       };
       botState.state = 'HOLDING';
+    }
+    
+    // If momentum goes back up significantly, exit dipping state without buying
+    if (botState.momentum > botState.prevMomentum && momentumDropped < 1) {
+      botState.state = 'IDLE';
+      botState.dipStartTick = null;
+      botState.dipStartMomentum = null;
     }
   }
   else if (botState.state === 'HOLDING' && botState.position) {
