@@ -214,17 +214,20 @@ function processTickForBot(botState, tick) {
     let shouldSell = false;
     let reason = '';
     
-    // EXIT 1: Momentum went up then stopping/slowing (profit take on stall after rise)
+    // EXIT 1: "sell into the number going up and stopping a bit"
+    // Number went up after entry, now velocity is slowing/stopping
     if (momentumSinceEntry >= profitMomentumRise && Math.abs(avgVelocity) < stallVelocityThreshold) {
       shouldSell = true;
       reason = 'PROFIT_STALL';
     }
-    // EXIT 2: Momentum starts going down after entry - sell immediately
-    else if (velocity < -0.8) {
+    // EXIT 2: "if it starts to go down sell right away"
+    // The NUMBER (momentum) starts decreasing after entry
+    else if (botState.momentum < botState.prevMomentum) {
       shouldSell = true;
-      reason = 'QUICK_EXIT_DOWN';
+      reason = 'NUMBER_DOWN';
     }
-    // EXIT 3: Momentum dropped more than stop threshold after entry
+    // EXIT 3: "if the number is going down more then some miliseconds after entry"
+    // Momentum has dropped significantly from entry point
     else if (momentumSinceEntry < -stopLossMomentumDrop) {
       shouldSell = true;
       reason = 'STOP_LOSS';
@@ -249,7 +252,9 @@ function processTickForBot(botState, tick) {
       botState.position = null;
       botState.state = 'IDLE';
       botState.momentum = 0;
+      botState.prevMomentum = 0;
       botState.dipStartTick = null;
+      botState.dipStartMomentum = null;
     }
   }
   
