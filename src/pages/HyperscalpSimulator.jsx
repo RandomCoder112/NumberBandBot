@@ -662,11 +662,11 @@ export default function HyperscalpSimulator() {
                   {isPlaying ? <Pause className="w-4 h-4 mr-2" /> : <Play className="w-4 h-4 mr-2" />}
                   {isPlaying ? 'Pause' : currentTick === 0 ? 'Start' : 'Resume'}
                 </Button>
-                <Button onClick={reset} variant="outline" className="border-slate-700">
+                <Button onClick={reset} className="bg-slate-700 hover:bg-slate-600 text-slate-200 border-0">
                   <RotateCcw className="w-4 h-4 mr-2" />
                   Reset
                 </Button>
-                <Button onClick={generateNewTape} variant="outline" className="border-slate-700">
+                <Button onClick={generateNewTape} className="bg-purple-600 hover:bg-purple-500 text-white border-0">
                   New Tape
                 </Button>
               </>
@@ -689,7 +689,7 @@ export default function HyperscalpSimulator() {
                     Stop Bot
                   </Button>
                 )}
-                <Button onClick={reset} variant="outline" className="border-slate-700">
+                <Button onClick={reset} className="bg-slate-700 hover:bg-slate-600 text-slate-200 border-0">
                   <RotateCcw className="w-4 h-4 mr-2" />
                   Reset
                 </Button>
