@@ -386,6 +386,11 @@ function processTickForBot(botState, tick) {
 }
 
 export default function HyperscalpSimulator() {
+  const [mode, setMode] = useState('simulator'); // 'simulator' or 'live'
+  const [ticker, setTicker] = useState('AAPL');
+  const [shareQty, setShareQty] = useState(100);
+  const [botRunning, setBotRunning] = useState(false);
+  
   const [tapeData, setTapeData] = useState(null);
   const [currentTick, setCurrentTick] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -395,6 +400,8 @@ export default function HyperscalpSimulator() {
   
   const botStateRef = useRef(null);
   const animationRef = useRef(null);
+  const wsRef = useRef(null);
+  const liveDataRef = useRef([]);
   
   const [params, setParams] = useState({
     minDipTicks: 5,
@@ -974,6 +981,7 @@ export default function HyperscalpSimulator() {
             </div>
           </div>
         </Card>
+        )}
 
         {/* Parameters */}
         <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
