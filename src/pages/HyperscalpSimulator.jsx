@@ -641,7 +641,7 @@ export default function HyperscalpSimulator() {
                 variant={mode === 'simulator' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => { setMode('simulator'); reset(); }}
-                className="h-7"
+                className={`h-7 ${mode === 'simulator' ? '' : 'text-slate-300 hover:text-white'}`}
               >
                 Simulator
               </Button>
@@ -649,7 +649,7 @@ export default function HyperscalpSimulator() {
                 variant={mode === 'live' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => { setMode('live'); reset(); }}
-                className="h-7"
+                className={`h-7 ${mode === 'live' ? '' : 'text-slate-300 hover:text-white'}`}
               >
                 Live
               </Button>
