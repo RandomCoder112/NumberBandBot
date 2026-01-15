@@ -522,10 +522,11 @@ export default function HyperscalpSimulator() {
           </Card>
         </div>
         
-        {/* Chart */}
-        <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
-          <div className="h-[400px]">
-            <ResponsiveContainer width="100%" height="100%">
+        {/* Chart and Tape */}
+        <div className="grid grid-cols-[1fr_200px] gap-4">
+          <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
+            <div className="h-[400px]">
+              <ResponsiveContainer width="100%" height="100%">
               <LineChart data={visibleData} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
                 <XAxis 
                   dataKey="time" 
