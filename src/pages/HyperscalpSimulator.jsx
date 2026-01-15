@@ -16,7 +16,8 @@ function generateTapeData(basePrice = 4.20, durationSeconds = 90, ticksPerSecond
     suddenDips = false,
     randomization = 1.0,
     volatilityMultiplier = 1.0,
-    maxPriceRange = 5.0
+    maxPriceRange = 5.0,
+    momentumSpeed = 1.0
   } = options;
   
   const ticks = [];
@@ -61,7 +62,7 @@ function generateTapeData(basePrice = 4.20, durationSeconds = 90, ticksPerSecond
       const dipMultiplier = isSuddenDip ? -2.5 : 1;
       
       const noise = (Math.random() - 0.5) * phase.volatility * (isFastMove ? 1.5 : 1);
-      let trendMove = phase.trend * (1 + (Math.random() - 0.5) * 0.8 * randomization) * fastMultiplier * dipMultiplier;
+      let trendMove = phase.trend * (1 + (Math.random() - 0.5) * 0.8 * randomization) * fastMultiplier * dipMultiplier * momentumSpeed;
       
       // Dampen downward moves when price is elevated to prevent deep drops
       const priceAboveBase = price - basePrice;
@@ -439,7 +440,8 @@ export default function HyperscalpSimulator() {
     randomization: 1.0,
     volatilityMultiplier: 1.0,
     startingPrice: 4.20,
-    maxPriceRange: 5.0 // Maximum price change from starting price
+    maxPriceRange: 5.0, // Maximum price change from starting price
+    momentumSpeed: 1.0 // Controls speed of momentum rise/fall
   });
   
   const generateNewTape = useCallback(() => {
@@ -1018,6 +1020,29 @@ export default function HyperscalpSimulator() {
                   disabled={isPlaying}
                 />
                 <span className="text-emerald-400 font-mono text-sm w-12">{tapeOptions.maxPriceRange === 0 ? 'OFF' : `$${tapeOptions.maxPriceRange.toFixed(2)}`}</span>
+              </div>
+            </div>
+            <div>
+              <div className="flex items-center gap-1 mb-1">
+                <Label className="text-slate-400 text-xs">Momentum Speed</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="w-3 h-3 text-slate-500 cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">Speed of price momentum rise and fall</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="flex items-center gap-2 mt-1">
+                <Slider
+                  value={[tapeOptions.momentumSpeed * 100]}
+                  onValueChange={([v]) => setTapeOptions(p => ({...p, momentumSpeed: v/100}))}
+                  min={25} max={200} step={5}
+                  className="flex-1"
+                  disabled={isPlaying}
+                />
+                <span className="text-emerald-400 font-mono text-sm w-10">{(tapeOptions.momentumSpeed * 100).toFixed(0)}%</span>
               </div>
             </div>
           </div>
