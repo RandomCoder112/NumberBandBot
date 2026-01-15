@@ -177,6 +177,11 @@ function processTickForBot(botState, tick) {
     botState.dipStartMomentum = null;
   }
   
+  // Check if price is still in surge range (not down more than 50% from surge start)
+  const priceDownFromSurge = botState.surgeStartPrice ? 
+    ((botState.surgeStartPrice - mid) / botState.surgeStartPrice) : 0;
+  const stillInSurgeRange = priceDownFromSurge < 0.5; // Price hasn't dropped 50% from surge start
+  
   // STATE MACHINE
   if (botState.state === 'IDLE') {
     // Waiting for momentum to build positive (spike up)
@@ -186,13 +191,14 @@ function processTickForBot(botState, tick) {
   }
   else if (botState.state === 'BUILDING_UP') {
     // Spike detected, now watching for THE NUMBER to start going down
-    // "when that number is starting to go down this is a dip"
-    // OR if momentum already negative but historical data shows strong surge (50%+ of peak)
+    // OR if momentum already negative but:
+    // 1. Historical data shows strong surge (50%+ of peak)
+    // 2. Price is still in surge range (not flushing down)
     const hasStrongHistory = botState.historicalPeakMomentum > 0 && 
                              Math.abs(botState.momentum) >= (botState.historicalPeakMomentum * 0.5);
     
     if ((botState.momentum < botState.prevMomentum && botState.momentum >= 0) || 
-        (botState.momentum < 0 && hasStrongHistory)) {
+        (botState.momentum < 0 && hasStrongHistory && stillInSurgeRange)) {
       botState.state = 'DIPPING';
       botState.dipStartTick = tick.tick;
       botState.dipStartMomentum = botState.prevMomentum || botState.peakMomentum;
