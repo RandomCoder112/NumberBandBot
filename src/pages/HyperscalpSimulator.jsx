@@ -301,8 +301,8 @@ function processTickForBot(botState, tick) {
       // After exit, look for next entry opportunity
       botState.position = null;
       if (reason === 'STOP_LOSS' || reason === 'SUSTAINED_DROP') {
-        // Check if historical momentum was strong enough to keep looking
-        const stillStrong = botState.historicalPeakMomentum >= minMomentumForSpike;
+        // Check if historical momentum was strong AND price still in surge range
+        const stillStrong = botState.historicalPeakMomentum >= minMomentumForSpike && stillInSurgeRange;
         if (stillStrong) {
           // Still dipping, look for next consolidation/entry
           botState.state = 'BUILDING_UP';
@@ -312,6 +312,7 @@ function processTickForBot(botState, tick) {
           botState.prevMomentum = 0;
           botState.peakMomentum = 0;
           botState.historicalPeakMomentum = 0;
+          botState.surgeStartPrice = null;
         }
       } else {
         // Profit taken, reset
@@ -320,6 +321,7 @@ function processTickForBot(botState, tick) {
         botState.prevMomentum = 0;
         botState.peakMomentum = 0;
         botState.historicalPeakMomentum = 0;
+        botState.surgeStartPrice = null;
       }
       botState.dipStartTick = null;
       botState.dipStartMomentum = null;
