@@ -80,12 +80,14 @@ function initBotState(params) {
     momentum: 0,
     prevMomentum: 0,
     prevMid: null,
-    state: 'IDLE', // IDLE, BUILDING_UP, DIPPING, HOLDING
+    state: 'IDLE',
     dipStartTick: null,
     dipStartMomentum: null,
     position: null,
     velocityHistory: [],
     unchangedTicks: 0,
+    peakMomentum: 0, // Track highest momentum in current surge
+    historicalPeakMomentum: 0, // Remember peak even after consolidation
     params
   };
 }
