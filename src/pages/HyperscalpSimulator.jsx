@@ -1,28 +1,29 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
-import { Play, RefreshCw, TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceDot, ReferenceLine } from 'recharts';
+import { Play, Pause, RotateCcw, TrendingUp, TrendingDown } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceDot } from 'recharts';
 
 // Generate realistic small-cap tape data
-function generateTapeData(basePrice = 4.20, durationSeconds = 60, ticksPerSecond = 8) {
+function generateTapeData(basePrice = 4.20, durationSeconds = 60, ticksPerSecond = 10) {
   const ticks = [];
   const totalTicks = durationSeconds * ticksPerSecond;
   let price = basePrice;
   let spread = 0.08;
   
-  // Pattern phases: sideways -> spike up -> dip -> stall -> bounce -> consolidate
+  // Pattern: sideways -> spike up -> dip -> stall -> bounce -> dip -> stall -> push
   const phases = [
-    { name: 'sideways', duration: 0.1, trend: 0, volatility: 0.02 },
-    { name: 'spike_up', duration: 0.25, trend: 0.015, volatility: 0.04 },
-    { name: 'dip', duration: 0.15, trend: -0.008, volatility: 0.03 },
-    { name: 'stall', duration: 0.08, trend: 0, volatility: 0.005 },
-    { name: 'bounce', duration: 0.12, trend: 0.012, volatility: 0.035 },
-    { name: 'mini_dip', duration: 0.08, trend: -0.005, volatility: 0.02 },
-    { name: 'stall2', duration: 0.06, trend: 0, volatility: 0.004 },
-    { name: 'final_push', duration: 0.16, trend: 0.01, volatility: 0.03 },
+    { name: 'sideways', duration: 0.08, trend: 0, volatility: 0.015 },
+    { name: 'spike_up', duration: 0.22, trend: 0.018, volatility: 0.045 },
+    { name: 'dip', duration: 0.12, trend: -0.010, volatility: 0.028 },
+    { name: 'stall', duration: 0.06, trend: 0, volatility: 0.003 },
+    { name: 'bounce', duration: 0.15, trend: 0.014, volatility: 0.038 },
+    { name: 'mini_dip', duration: 0.10, trend: -0.006, volatility: 0.022 },
+    { name: 'stall2', duration: 0.05, trend: 0, volatility: 0.004 },
+    { name: 'final_push', duration: 0.12, trend: 0.012, volatility: 0.032 },
+    { name: 'final_dip', duration: 0.10, trend: -0.007, volatility: 0.025 },
   ];
   
   let currentTick = 0;
@@ -33,18 +34,16 @@ function generateTapeData(basePrice = 4.20, durationSeconds = 60, ticksPerSecond
     const phaseEnd = phaseStart + Math.floor(totalTicks * phase.duration);
     
     while (currentTick < phaseEnd && currentTick < totalTicks) {
-      // Add micro noise and trend
       const noise = (Math.random() - 0.5) * phase.volatility;
-      const trendMove = phase.trend * (1 + (Math.random() - 0.5) * 0.5);
+      const trendMove = phase.trend * (1 + (Math.random() - 0.5) * 0.4);
       price = Math.max(1, price + trendMove + noise);
       
-      // Spread varies - tighter during stalls, wider during volatility
       if (phase.name.includes('stall')) {
-        spread = 0.01 + Math.random() * 0.02;
+        spread = 0.01 + Math.random() * 0.015;
       } else if (phase.name === 'spike_up' || phase.name === 'bounce') {
-        spread = 0.05 + Math.random() * 0.15;
+        spread = 0.04 + Math.random() * 0.12;
       } else {
-        spread = 0.03 + Math.random() * 0.08;
+        spread = 0.025 + Math.random() * 0.07;
       }
       
       const halfSpread = spread / 2;
@@ -52,10 +51,9 @@ function generateTapeData(basePrice = 4.20, durationSeconds = 60, ticksPerSecond
       const ask = Math.round((price + halfSpread) * 100) / 100;
       const mid = (bid + ask) / 2;
       
-      // Volume varies by phase
-      let volume = Math.floor(Math.random() * 500) + 100;
-      if (phase.name === 'spike_up') volume *= 3;
-      if (phase.name === 'bounce' || phase.name === 'final_push') volume *= 2;
+      let volume = Math.floor(Math.random() * 400) + 150;
+      if (phase.name === 'spike_up') volume *= 3.5;
+      if (phase.name === 'bounce' || phase.name === 'final_push') volume *= 2.2;
       
       ticks.push({
         tick: currentTick,
@@ -76,513 +74,542 @@ function generateTapeData(basePrice = 4.20, durationSeconds = 60, ticksPerSecond
   return ticks;
 }
 
-// Bot logic - Number Theory Band
-function runBotLogic(ticks, params) {
+// NUMBER THEORY BAND BOT LOGIC - Exact implementation
+function initBotState(params) {
+  return {
+    momentum: 0,
+    prevMid: null,
+    state: 'IDLE', // IDLE, BUILDING_UP, DIPPING, HOLDING
+    dipStartTick: null,
+    position: null,
+    velocityHistory: [],
+    momentumHistory: [],
+    unchangedTicks: 0,
+    params
+  };
+}
+
+function processTickForBot(botState, tick) {
+  const { mid, spread, bid, ask } = tick;
   const {
-    minDipTicks = 4,
-    stallVelocityThreshold = 0.15,
-    stopLossTicks = 3,
-    profitTargetPercent = 0.8,
-    maxSpreadForEntry = 0.06,
-    minMomentumForDip = 3
-  } = params;
+    minDipTicks = 5,
+    stallVelocityThreshold = 0.12,
+    stopLossMomentumDrop = 3,
+    profitMomentumRise = 4,
+    maxSpreadForEntry = 0.05,
+    minMomentumForSpike = 5,
+    consolidationTicks = 4,
+    minDipMomentumDrop = 3
+  } = botState.params;
   
-  const trades = [];
-  const states = [];
+  let action = null;
+  let tradeInfo = null;
   
-  let momentum = 0;
-  let prevMid = null;
-  let state = 'IDLE';
-  let dipStartTick = null;
-  let position = null;
-  let velocityHistory = [];
-  
-  for (let i = 0; i < ticks.length; i++) {
-    const tick = ticks[i];
-    const { mid, spread, bid, ask } = tick;
-    
-    // Calculate delta
-    let delta = 0;
-    if (prevMid !== null) {
-      delta = mid - prevMid;
-    }
-    
-    // Update momentum counter
-    if (delta > 0.005) {
-      momentum += 1;
-    } else if (delta < -0.005) {
-      momentum -= 1;
-    }
-    
-    // Calculate velocity (rate of change)
-    const velocity = delta;
-    velocityHistory.push(velocity);
-    if (velocityHistory.length > 5) velocityHistory.shift();
-    
-    const avgVelocity = velocityHistory.reduce((a, b) => a + b, 0) / velocityHistory.length;
-    
-    // Check for consolidation (reset)
-    let isConsolidating = velocityHistory.length >= 3 && 
-      velocityHistory.every(v => Math.abs(v) < 0.01);
-    
-    if (isConsolidating && state !== 'HOLDING') {
-      momentum = 0;
-      state = 'IDLE';
-      dipStartTick = null;
-    }
-    
-    // State machine
-    let action = null;
-    
-    if (state === 'IDLE') {
-      if (momentum > minMomentumForDip) {
-        state = 'BUILDING_UP';
-      }
-    } 
-    else if (state === 'BUILDING_UP') {
-      if (delta < -0.005) {
-        state = 'DIPPING';
-        dipStartTick = i;
-      }
-    } 
-    else if (state === 'DIPPING') {
-      const dipDuration = i - dipStartTick;
-      const isSlowing = Math.abs(avgVelocity) < stallVelocityThreshold;
-      const spreadOk = spread <= maxSpreadForEntry;
-      
-      if (dipDuration >= minDipTicks && isSlowing && spreadOk && !position) {
-        // BUY
-        position = { entryTick: i, entryPrice: ask, entryMid: mid };
-        action = 'BUY';
-        state = 'HOLDING';
-        trades.push({
-          type: 'BUY',
-          tick: i,
-          price: ask,
-          time: tick.time
-        });
-      }
-    } 
-    else if (state === 'HOLDING' && position) {
-      const pnlPercent = ((mid - position.entryMid) / position.entryMid) * 100;
-      const ticksHeld = i - position.entryTick;
-      
-      // Exit conditions
-      let shouldSell = false;
-      let reason = '';
-      
-      // Profit target with slowdown
-      if (pnlPercent > profitTargetPercent && avgVelocity < 0.01) {
-        shouldSell = true;
-        reason = 'PROFIT';
-      }
-      // Stop loss - price dropping
-      else if (delta < -0.02 && ticksHeld > 1) {
-        shouldSell = true;
-        reason = 'STOP_QUICK';
-      }
-      // Stop loss - continued drop
-      else if (pnlPercent < -0.5 && ticksHeld >= stopLossTicks) {
-        shouldSell = true;
-        reason = 'STOP_LOSS';
-      }
-      
-      if (shouldSell) {
-        action = 'SELL';
-        const exitPrice = bid;
-        const profit = exitPrice - position.entryPrice;
-        trades.push({
-          type: 'SELL',
-          tick: i,
-          price: exitPrice,
-          time: tick.time,
-          profit,
-          profitPercent: ((exitPrice - position.entryPrice) / position.entryPrice * 100).toFixed(2),
-          reason
-        });
-        position = null;
-        state = 'IDLE';
-        momentum = 0;
-        dipStartTick = null;
-      }
-    }
-    
-    states.push({
-      tick: i,
-      time: tick.time,
-      mid,
-      momentum,
-      state,
-      velocity: avgVelocity.toFixed(4),
-      action,
-      phase: tick.phase
-    });
-    
-    prevMid = mid;
+  // Calculate delta from previous mid
+  let delta = 0;
+  if (botState.prevMid !== null) {
+    delta = mid - botState.prevMid;
   }
   
-  return { trades, states };
+  // Update momentum counter: +1 for up tick, -1 for down tick
+  if (delta > 0.003) {
+    botState.momentum += 1;
+    botState.unchangedTicks = 0;
+  } else if (delta < -0.003) {
+    botState.momentum -= 1;
+    botState.unchangedTicks = 0;
+  } else {
+    botState.unchangedTicks += 1;
+  }
+  
+  // Track momentum history for velocity calculation
+  botState.momentumHistory.push(botState.momentum);
+  if (botState.momentumHistory.length > 6) {
+    botState.momentumHistory.shift();
+  }
+  
+  // Calculate velocity (rate of change in momentum)
+  let velocity = 0;
+  if (botState.momentumHistory.length >= 3) {
+    const recentChange = botState.momentumHistory[botState.momentumHistory.length - 1] - 
+                        botState.momentumHistory[botState.momentumHistory.length - 3];
+    velocity = recentChange / 2; // avg per tick
+  }
+  
+  botState.velocityHistory.push(velocity);
+  if (botState.velocityHistory.length > 5) {
+    botState.velocityHistory.shift();
+  }
+  
+  // Calculate average velocity (for smoothing)
+  const avgVelocity = botState.velocityHistory.reduce((a, b) => a + b, 0) / 
+                      (botState.velocityHistory.length || 1);
+  
+  // Consolidation detection: Reset momentum to 0 if price unchanged for several ticks
+  if (botState.unchangedTicks >= consolidationTicks && botState.state !== 'HOLDING') {
+    botState.momentum = 0;
+    botState.state = 'IDLE';
+    botState.dipStartTick = null;
+  }
+  
+  // STATE MACHINE
+  if (botState.state === 'IDLE') {
+    // Waiting for momentum to build positive (spike up)
+    if (botState.momentum >= minMomentumForSpike) {
+      botState.state = 'BUILDING_UP';
+    }
+  }
+  else if (botState.state === 'BUILDING_UP') {
+    // Spike detected, now watching for dip (momentum starting to decrease)
+    if (velocity < -0.5) { // momentum starting to go down
+      botState.state = 'DIPPING';
+      botState.dipStartTick = tick.tick;
+    }
+  }
+  else if (botState.state === 'DIPPING') {
+    const dipDuration = tick.tick - botState.dipStartTick;
+    const momentumDroppedEnough = botState.momentum < (minMomentumForSpike - minDipMomentumDrop);
+    
+    // Wait for dip to slow down: velocity approaching zero, after dropping for good amount
+    const isSlowing = Math.abs(avgVelocity) < stallVelocityThreshold;
+    const spreadOk = spread <= maxSpreadForEntry;
+    const dipLongEnough = dipDuration >= minDipTicks;
+    
+    if (dipLongEnough && momentumDroppedEnough && isSlowing && spreadOk && !botState.position) {
+      // BUY THE DIP
+      botState.position = {
+        entryTick: tick.tick,
+        entryPrice: ask,
+        entryMid: mid,
+        entryMomentum: botState.momentum
+      };
+      action = 'BUY';
+      tradeInfo = {
+        type: 'BUY',
+        tick: tick.tick,
+        price: ask,
+        time: tick.time,
+        momentum: botState.momentum
+      };
+      botState.state = 'HOLDING';
+    }
+  }
+  else if (botState.state === 'HOLDING' && botState.position) {
+    const momentumSinceEntry = botState.momentum - botState.position.entryMomentum;
+    const pnl = mid - botState.position.entryMid;
+    const pnlPercent = (pnl / botState.position.entryMid) * 100;
+    
+    let shouldSell = false;
+    let reason = '';
+    
+    // EXIT 1: Momentum went up then stopping/slowing (profit take on stall after rise)
+    if (momentumSinceEntry >= profitMomentumRise && Math.abs(avgVelocity) < stallVelocityThreshold) {
+      shouldSell = true;
+      reason = 'PROFIT_STALL';
+    }
+    // EXIT 2: Momentum starts going down after entry - sell immediately
+    else if (velocity < -0.8) {
+      shouldSell = true;
+      reason = 'QUICK_EXIT_DOWN';
+    }
+    // EXIT 3: Momentum dropped more than stop threshold after entry
+    else if (momentumSinceEntry < -stopLossMomentumDrop) {
+      shouldSell = true;
+      reason = 'STOP_LOSS';
+    }
+    
+    if (shouldSell) {
+      const exitPrice = bid;
+      const profit = exitPrice - botState.position.entryPrice;
+      action = 'SELL';
+      tradeInfo = {
+        type: 'SELL',
+        tick: tick.tick,
+        price: exitPrice,
+        time: tick.time,
+        profit,
+        profitPercent: pnlPercent.toFixed(2),
+        reason,
+        momentum: botState.momentum
+      };
+      
+      // Reset state
+      botState.position = null;
+      botState.state = 'IDLE';
+      botState.momentum = 0;
+      botState.dipStartTick = null;
+    }
+  }
+  
+  botState.prevMid = mid;
+  
+  return {
+    botState,
+    action,
+    tradeInfo,
+    debugInfo: {
+      momentum: botState.momentum,
+      velocity: avgVelocity.toFixed(3),
+      state: botState.state,
+      unchangedTicks: botState.unchangedTicks
+    }
+  };
 }
 
 export default function HyperscalpSimulator() {
   const [tapeData, setTapeData] = useState(null);
-  const [botResult, setBotResult] = useState(null);
-  const [isRunning, setIsRunning] = useState(false);
+  const [currentTick, setCurrentTick] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [speed, setSpeed] = useState(50); // ms per tick
+  const [trades, setTrades] = useState([]);
+  const [currentState, setCurrentState] = useState(null);
   
-  // Bot parameters
+  const botStateRef = useRef(null);
+  const animationRef = useRef(null);
+  
   const [params, setParams] = useState({
-    minDipTicks: 4,
-    stallVelocityThreshold: 0.15,
-    stopLossTicks: 3,
-    profitTargetPercent: 0.8,
-    maxSpreadForEntry: 0.06,
-    minMomentumForDip: 3
+    minDipTicks: 5,
+    stallVelocityThreshold: 0.12,
+    stopLossMomentumDrop: 3,
+    profitMomentumRise: 4,
+    maxSpreadForEntry: 0.05,
+    minMomentumForSpike: 5,
+    consolidationTicks: 4,
+    minDipMomentumDrop: 3
   });
   
-  const runSimulation = useCallback(() => {
-    setIsRunning(true);
-    
-    // Generate new tape data
+  const generateNewTape = useCallback(() => {
     const tape = generateTapeData(4.20, 60, 10);
     setTapeData(tape);
-    
-    // Run bot logic
-    const result = runBotLogic(tape, params);
-    setBotResult(result);
-    
-    setIsRunning(false);
+    setCurrentTick(0);
+    setTrades([]);
+    setIsPlaying(false);
+    botStateRef.current = initBotState(params);
   }, [params]);
   
-  // Prepare chart data
-  const chartData = tapeData?.map((tick, idx) => {
-    const stateInfo = botResult?.states[idx];
-    const trade = botResult?.trades.find(t => t.tick === idx);
+  useEffect(() => {
+    generateNewTape();
+  }, [generateNewTape]);
+  
+  useEffect(() => {
+    if (isPlaying && tapeData && currentTick < tapeData.length) {
+      animationRef.current = setTimeout(() => {
+        const tick = tapeData[currentTick];
+        const result = processTickForBot(botStateRef.current, tick);
+        
+        if (result.tradeInfo) {
+          setTrades(prev => [...prev, result.tradeInfo]);
+        }
+        
+        setCurrentState(result.debugInfo);
+        setCurrentTick(prev => prev + 1);
+      }, speed);
+    } else if (currentTick >= (tapeData?.length || 0)) {
+      setIsPlaying(false);
+    }
     
-    return {
-      tick: idx,
-      time: parseFloat(tick.time),
-      price: tick.mid,
-      bid: tick.bid,
-      ask: tick.ask,
-      spread: tick.spread,
-      momentum: stateInfo?.momentum || 0,
-      state: stateInfo?.state,
-      action: trade?.type,
-      phase: tick.phase
+    return () => {
+      if (animationRef.current) {
+        clearTimeout(animationRef.current);
+      }
     };
-  });
+  }, [isPlaying, currentTick, tapeData, speed]);
   
-  const buyTrades = botResult?.trades.filter(t => t.type === 'BUY') || [];
-  const sellTrades = botResult?.trades.filter(t => t.type === 'SELL') || [];
+  const togglePlayPause = () => {
+    if (currentTick >= (tapeData?.length || 0)) {
+      // Reset if finished
+      setCurrentTick(0);
+      setTrades([]);
+      botStateRef.current = initBotState(params);
+    }
+    setIsPlaying(prev => !prev);
+  };
   
-  // Calculate totals
+  const reset = () => {
+    setCurrentTick(0);
+    setTrades([]);
+    setIsPlaying(false);
+    botStateRef.current = initBotState(params);
+  };
+  
+  // Prepare visible chart data
+  const visibleData = tapeData?.slice(0, currentTick + 1).map((tick, idx) => ({
+    tick: idx,
+    time: parseFloat(tick.time),
+    price: tick.mid,
+    bid: tick.bid,
+    ask: tick.ask
+  })) || [];
+  
+  const buyTrades = trades.filter(t => t.type === 'BUY');
+  const sellTrades = trades.filter(t => t.type === 'SELL');
+  
   const totalPnL = sellTrades.reduce((sum, t) => sum + (t.profit || 0), 0);
   const winTrades = sellTrades.filter(t => t.profit > 0).length;
   const lossTrades = sellTrades.filter(t => t.profit <= 0).length;
+  const winRate = sellTrades.length > 0 ? (winTrades / sellTrades.length * 100).toFixed(0) : 0;
+  
+  const currentPrice = tapeData?.[currentTick]?.mid || 0;
+  const progress = tapeData ? (currentTick / tapeData.length * 100).toFixed(0) : 0;
   
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-white p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white p-4">
+      <div className="max-w-6xl mx-auto space-y-4">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-2">
           <div>
-            <h1 className="text-3xl font-bold text-white tracking-tight">Hyperscalp Simulator</h1>
-            <p className="text-gray-500 mt-1">Number Theory Band Strategy Test</p>
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
+              Number Theory Band
+            </h1>
+            <p className="text-slate-500 text-sm mt-1">Hyperscalp Strategy Simulator</p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-2">
             <Button 
-              onClick={runSimulation}
-              disabled={isRunning}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white px-6"
+              onClick={togglePlayPause}
+              className={`${isPlaying ? 'bg-amber-600 hover:bg-amber-500' : 'bg-emerald-600 hover:bg-emerald-500'} px-6`}
             >
-              {isRunning ? (
-                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Play className="w-4 h-4 mr-2" />
-              )}
-              Run Simulation
+              {isPlaying ? <Pause className="w-4 h-4 mr-2" /> : <Play className="w-4 h-4 mr-2" />}
+              {isPlaying ? 'Pause' : currentTick === 0 ? 'Start' : 'Resume'}
+            </Button>
+            <Button onClick={reset} variant="outline" className="border-slate-700">
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Reset
+            </Button>
+            <Button onClick={generateNewTape} variant="outline" className="border-slate-700">
+              New Tape
             </Button>
           </div>
         </div>
         
+        {/* Progress Bar */}
+        <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-xs text-slate-400">Progress: {progress}%</span>
+            <span className="text-xs text-slate-400">Tick {currentTick} / {tapeData?.length || 0}</span>
+          </div>
+          <div className="w-full bg-slate-700 rounded-full h-2">
+            <div 
+              className="bg-gradient-to-r from-emerald-500 to-cyan-500 h-2 rounded-full transition-all duration-200"
+              style={{ width: `${progress}%` }}
+            ></div>
+          </div>
+        </div>
+        
+        {/* Live Stats Row */}
+        <div className="grid grid-cols-5 gap-3">
+          <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
+            <div className="text-xs text-slate-400 mb-1">Current Price</div>
+            <div className="text-2xl font-bold text-emerald-400">${currentPrice.toFixed(3)}</div>
+          </Card>
+          <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
+            <div className="text-xs text-slate-400 mb-1">Momentum</div>
+            <div className={`text-2xl font-bold ${
+              currentState?.momentum > 0 ? 'text-emerald-400' : 
+              currentState?.momentum < 0 ? 'text-red-400' : 'text-slate-400'
+            }`}>
+              {currentState?.momentum || 0}
+            </div>
+          </Card>
+          <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
+            <div className="text-xs text-slate-400 mb-1">State</div>
+            <div className="text-sm font-semibold text-cyan-400">{currentState?.state || 'IDLE'}</div>
+            <div className="text-xs text-slate-500 mt-1">v: {currentState?.velocity || '0.000'}</div>
+          </Card>
+          <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
+            <div className="text-xs text-slate-400 mb-1">P&L</div>
+            <div className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+              ${totalPnL.toFixed(3)}
+            </div>
+          </Card>
+          <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
+            <div className="text-xs text-slate-400 mb-1">Win Rate</div>
+            <div className="text-2xl font-bold text-cyan-400">{winRate}%</div>
+            <div className="text-xs text-slate-500 mt-1">{winTrades}W / {lossTrades}L</div>
+          </Card>
+        </div>
+        
+        {/* Chart */}
+        <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
+          <div className="h-[400px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={visibleData} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
+                <XAxis 
+                  dataKey="time" 
+                  stroke="#475569"
+                  tick={{ fill: '#64748b', fontSize: 11 }}
+                  tickFormatter={(v) => `${v}s`}
+                />
+                <YAxis 
+                  domain={['auto', 'auto']}
+                  stroke="#475569"
+                  tick={{ fill: '#64748b', fontSize: 11 }}
+                  tickFormatter={(v) => `$${v.toFixed(2)}`}
+                />
+                <Tooltip
+                  contentStyle={{ 
+                    backgroundColor: '#1e293b', 
+                    border: '1px solid #334155',
+                    borderRadius: '8px'
+                  }}
+                  labelStyle={{ color: '#94a3b8' }}
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="price" 
+                  stroke="#10b981" 
+                  strokeWidth={3}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+                {buyTrades.map((trade, idx) => {
+                  const dataPoint = visibleData.find(d => d.tick === trade.tick);
+                  return dataPoint ? (
+                    <ReferenceDot
+                      key={`buy-${idx}`}
+                      x={dataPoint.time}
+                      y={dataPoint.price}
+                      r={10}
+                      fill="#10b981"
+                      stroke="#fff"
+                      strokeWidth={3}
+                    />
+                  ) : null;
+                })}
+                {sellTrades.map((trade, idx) => {
+                  const dataPoint = visibleData.find(d => d.tick === trade.tick);
+                  return dataPoint ? (
+                    <ReferenceDot
+                      key={`sell-${idx}`}
+                      x={dataPoint.time}
+                      y={dataPoint.price}
+                      r={10}
+                      fill="#ef4444"
+                      stroke="#fff"
+                      strokeWidth={3}
+                    />
+                  ) : null;
+                })}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+        
         {/* Parameters */}
-        <Card className="bg-[#12121a] border-gray-800 p-6">
-          <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Bot Parameters</h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6">
+        <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
+          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Bot Parameters</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
-              <Label className="text-gray-400 text-xs">Min Dip Ticks</Label>
-              <div className="flex items-center gap-2 mt-2">
+              <Label className="text-slate-400 text-xs">Min Dip Ticks</Label>
+              <div className="flex items-center gap-2 mt-1">
                 <Slider
                   value={[params.minDipTicks]}
                   onValueChange={([v]) => setParams(p => ({...p, minDipTicks: v}))}
-                  min={1} max={10} step={1}
+                  min={2} max={12} step={1}
                   className="flex-1"
+                  disabled={isPlaying}
                 />
-                <span className="text-emerald-400 font-mono w-8">{params.minDipTicks}</span>
+                <span className="text-emerald-400 font-mono text-sm w-6">{params.minDipTicks}</span>
               </div>
             </div>
             <div>
-              <Label className="text-gray-400 text-xs">Stall Velocity</Label>
-              <div className="flex items-center gap-2 mt-2">
+              <Label className="text-slate-400 text-xs">Stall Velocity</Label>
+              <div className="flex items-center gap-2 mt-1">
                 <Slider
                   value={[params.stallVelocityThreshold * 100]}
                   onValueChange={([v]) => setParams(p => ({...p, stallVelocityThreshold: v/100}))}
-                  min={5} max={50} step={5}
+                  min={5} max={30} step={1}
                   className="flex-1"
+                  disabled={isPlaying}
                 />
-                <span className="text-emerald-400 font-mono w-8">{params.stallVelocityThreshold}</span>
+                <span className="text-emerald-400 font-mono text-sm w-9">{params.stallVelocityThreshold.toFixed(2)}</span>
               </div>
             </div>
             <div>
-              <Label className="text-gray-400 text-xs">Stop Loss Ticks</Label>
-              <div className="flex items-center gap-2 mt-2">
+              <Label className="text-slate-400 text-xs">Stop Loss Drop</Label>
+              <div className="flex items-center gap-2 mt-1">
                 <Slider
-                  value={[params.stopLossTicks]}
-                  onValueChange={([v]) => setParams(p => ({...p, stopLossTicks: v}))}
-                  min={1} max={10} step={1}
+                  value={[params.stopLossMomentumDrop]}
+                  onValueChange={([v]) => setParams(p => ({...p, stopLossMomentumDrop: v}))}
+                  min={1} max={8} step={1}
                   className="flex-1"
+                  disabled={isPlaying}
                 />
-                <span className="text-emerald-400 font-mono w-8">{params.stopLossTicks}</span>
+                <span className="text-emerald-400 font-mono text-sm w-6">{params.stopLossMomentumDrop}</span>
               </div>
             </div>
             <div>
-              <Label className="text-gray-400 text-xs">Profit Target %</Label>
-              <div className="flex items-center gap-2 mt-2">
+              <Label className="text-slate-400 text-xs">Profit Rise</Label>
+              <div className="flex items-center gap-2 mt-1">
                 <Slider
-                  value={[params.profitTargetPercent * 10]}
-                  onValueChange={([v]) => setParams(p => ({...p, profitTargetPercent: v/10}))}
-                  min={2} max={30} step={1}
+                  value={[params.profitMomentumRise]}
+                  onValueChange={([v]) => setParams(p => ({...p, profitMomentumRise: v}))}
+                  min={2} max={10} step={1}
                   className="flex-1"
+                  disabled={isPlaying}
                 />
-                <span className="text-emerald-400 font-mono w-8">{params.profitTargetPercent}%</span>
+                <span className="text-emerald-400 font-mono text-sm w-6">{params.profitMomentumRise}</span>
               </div>
             </div>
             <div>
-              <Label className="text-gray-400 text-xs">Max Spread Entry</Label>
-              <div className="flex items-center gap-2 mt-2">
+              <Label className="text-slate-400 text-xs">Speed (ms/tick)</Label>
+              <div className="flex items-center gap-2 mt-1">
                 <Slider
-                  value={[params.maxSpreadForEntry * 100]}
-                  onValueChange={([v]) => setParams(p => ({...p, maxSpreadForEntry: v/100}))}
-                  min={1} max={20} step={1}
+                  value={[speed]}
+                  onValueChange={([v]) => setSpeed(v)}
+                  min={10} max={200} step={10}
                   className="flex-1"
                 />
-                <span className="text-emerald-400 font-mono w-8">${params.maxSpreadForEntry}</span>
-              </div>
-            </div>
-            <div>
-              <Label className="text-gray-400 text-xs">Min Momentum</Label>
-              <div className="flex items-center gap-2 mt-2">
-                <Slider
-                  value={[params.minMomentumForDip]}
-                  onValueChange={([v]) => setParams(p => ({...p, minMomentumForDip: v}))}
-                  min={1} max={10} step={1}
-                  className="flex-1"
-                />
-                <span className="text-emerald-400 font-mono w-8">{params.minMomentumForDip}</span>
+                <span className="text-cyan-400 font-mono text-sm w-10">{speed}ms</span>
               </div>
             </div>
           </div>
         </Card>
         
-        {/* Chart */}
-        {chartData && (
-          <Card className="bg-[#12121a] border-gray-800 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Price Action</h3>
-              <div className="flex gap-4 text-xs">
-                <span className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
-                  BUY
-                </span>
-                <span className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                  SELL
-                </span>
-              </div>
-            </div>
-            <div className="h-[400px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData} margin={{ top: 20, right: 30, left: 10, bottom: 10 }}>
-                  <XAxis 
-                    dataKey="time" 
-                    stroke="#374151"
-                    tick={{ fill: '#6b7280', fontSize: 10 }}
-                    tickFormatter={(v) => `${v}s`}
-                  />
-                  <YAxis 
-                    domain={['auto', 'auto']}
-                    stroke="#374151"
-                    tick={{ fill: '#6b7280', fontSize: 10 }}
-                    tickFormatter={(v) => `$${v.toFixed(2)}`}
-                  />
-                  <Tooltip
-                    contentStyle={{ 
-                      backgroundColor: '#1f1f2e', 
-                      border: '1px solid #374151',
-                      borderRadius: '8px'
-                    }}
-                    labelStyle={{ color: '#9ca3af' }}
-                    formatter={(value, name) => {
-                      if (name === 'price') return [`$${value.toFixed(3)}`, 'Mid Price'];
-                      if (name === 'momentum') return [value, 'Momentum'];
-                      return [value, name];
-                    }}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="price" 
-                    stroke="#10b981" 
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                  {/* Buy markers */}
-                  {buyTrades.map((trade, idx) => (
-                    <ReferenceDot
-                      key={`buy-${idx}`}
-                      x={chartData[trade.tick]?.time}
-                      y={chartData[trade.tick]?.price}
-                      r={8}
-                      fill="#10b981"
-                      stroke="#fff"
-                      strokeWidth={2}
-                    />
-                  ))}
-                  {/* Sell markers */}
-                  {sellTrades.map((trade, idx) => (
-                    <ReferenceDot
-                      key={`sell-${idx}`}
-                      x={chartData[trade.tick]?.time}
-                      y={chartData[trade.tick]?.price}
-                      r={8}
-                      fill="#ef4444"
-                      stroke="#fff"
-                      strokeWidth={2}
-                    />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
-        )}
-        
-        {/* Momentum Chart */}
-        {chartData && (
-          <Card className="bg-[#12121a] border-gray-800 p-6">
-            <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Momentum Counter</h3>
-            <div className="h-[200px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData} margin={{ top: 10, right: 30, left: 10, bottom: 10 }}>
-                  <XAxis 
-                    dataKey="time" 
-                    stroke="#374151"
-                    tick={{ fill: '#6b7280', fontSize: 10 }}
-                    tickFormatter={(v) => `${v}s`}
-                  />
-                  <YAxis 
-                    stroke="#374151"
-                    tick={{ fill: '#6b7280', fontSize: 10 }}
-                  />
-                  <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3" />
-                  <Tooltip
-                    contentStyle={{ 
-                      backgroundColor: '#1f1f2e', 
-                      border: '1px solid #374151',
-                      borderRadius: '8px'
-                    }}
-                  />
-                  <Line 
-                    type="stepAfter" 
-                    dataKey="momentum" 
-                    stroke="#8b5cf6" 
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
-        )}
-        
-        {/* Stats & Trade Log */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Stats */}
-          <Card className="bg-[#12121a] border-gray-800 p-6">
-            <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Performance</h3>
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <span className="text-gray-500">Total P&L</span>
-                <span className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  ${totalPnL.toFixed(3)}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-gray-500">Trades</span>
-                <span className="text-xl font-semibold text-white">{sellTrades.length}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-gray-500">Win Rate</span>
-                <span className="text-xl font-semibold text-emerald-400">
-                  {sellTrades.length > 0 ? ((winTrades / sellTrades.length) * 100).toFixed(0) : 0}%
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-800">
+        {/* Trade Log */}
+        <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
+          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Trade Log</h3>
+          <div className="space-y-2 max-h-[200px] overflow-y-auto">
+            {trades.length === 0 && (
+              <p className="text-slate-600 text-center py-4 text-sm">No trades yet - waiting for signals...</p>
+            )}
+            {trades.slice().reverse().map((trade, idx) => (
+              <div 
+                key={trades.length - idx}
+                className={`flex items-center justify-between p-2 rounded-lg text-sm ${
+                  trade.type === 'BUY' 
+                    ? 'bg-emerald-500/10 border border-emerald-500/30' 
+                    : 'bg-red-500/10 border border-red-500/30'
+                }`}
+              >
                 <div className="flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-emerald-500" />
-                  <span className="text-emerald-400 font-semibold">{winTrades} Wins</span>
+                  <div className={`w-2 h-2 rounded-full ${trade.type === 'BUY' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+                  <span className={`font-semibold ${trade.type === 'BUY' ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {trade.type}
+                  </span>
+                  <span className="text-slate-300">@ ${trade.price.toFixed(3)}</span>
+                  <span className="text-slate-600 text-xs">t={trade.time}s</span>
+                  <span className="text-slate-600 text-xs">M={trade.momentum}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <TrendingDown className="w-4 h-4 text-red-500" />
-                  <span className="text-red-400 font-semibold">{lossTrades} Losses</span>
-                </div>
-              </div>
-            </div>
-          </Card>
-          
-          {/* Trade Log */}
-          <Card className="bg-[#12121a] border-gray-800 p-6 lg:col-span-2">
-            <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Trade Log</h3>
-            <div className="space-y-2 max-h-[300px] overflow-y-auto">
-              {botResult?.trades.length === 0 && (
-                <p className="text-gray-600 text-center py-8">No trades executed in this simulation</p>
-              )}
-              {botResult?.trades.map((trade, idx) => (
-                <div 
-                  key={idx}
-                  className={`flex items-center justify-between p-3 rounded-lg ${
-                    trade.type === 'BUY' 
-                      ? 'bg-emerald-500/10 border border-emerald-500/20' 
-                      : 'bg-red-500/10 border border-red-500/20'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-2 h-2 rounded-full ${trade.type === 'BUY' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
-                    <span className={`font-semibold ${trade.type === 'BUY' ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {trade.type}
+                {trade.profit !== undefined && (
+                  <div className="flex items-center gap-2">
+                    <span className={`font-mono font-semibold ${trade.profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {trade.profit >= 0 ? '+' : ''}{trade.profitPercent}%
                     </span>
-                    <span className="text-gray-400">@ ${trade.price.toFixed(3)}</span>
-                    <span className="text-gray-600 text-sm">t={trade.time}s</span>
+                    <span className="text-slate-500 text-xs">({trade.reason})</span>
                   </div>
-                  {trade.profit !== undefined && (
-                    <div className="flex items-center gap-2">
-                      <span className={`font-mono ${trade.profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {trade.profit >= 0 ? '+' : ''}{trade.profitPercent}%
-                      </span>
-                      <span className="text-gray-600 text-xs">({trade.reason})</span>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </Card>
-        </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
         
         {/* Info */}
-        <Card className="bg-[#12121a] border-gray-800 p-6">
-          <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">How It Works</h3>
-          <p className="text-gray-500 text-sm leading-relaxed">
-            This simulates your <span className="text-emerald-400">Number Theory Band</span> strategy. The bot tracks a momentum counter that increments on up-ticks and decrements on down-ticks. 
-            After momentum builds positive, it watches for dips. When the dip slows down (velocity approaches zero) and the spread is tight, it buys. 
-            It sells on profit target with slowdown, or cuts immediately if price drops after entry. Adjust parameters above and run multiple simulations to tune.
+        <Card className="bg-slate-800/50 border-slate-700/50 p-4">
+          <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Number Theory Band Logic</h3>
+          <p className="text-slate-500 text-xs leading-relaxed">
+            <span className="text-emerald-400 font-semibold">Momentum counter</span>: +1 on up tick, -1 on down tick, resets to 0 on consolidation. 
+            Bot waits for momentum to build (spike), then watches for dip. Buys when dip <span className="text-cyan-400">slows down</span> (velocity → 0) with tight spread. 
+            Sells when momentum rises then stalls, or immediately if it drops after entry. Pure tick-based logic - no indicators.
           </p>
         </Card>
       </div>
