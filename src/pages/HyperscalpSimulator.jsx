@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Play, Pause, RotateCcw, HelpCircle } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceDot } from 'recharts';
@@ -645,27 +646,23 @@ export default function HyperscalpSimulator() {
           <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Tape Generation</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
-              <div className="flex items-center gap-1 mb-2">
-                <Label className="text-slate-400 text-xs">Sudden Dips</Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <HelpCircle className="w-3 h-3 text-slate-500 cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="text-xs">Add sharp random drops during dip phases</p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant={tapeOptions.suddenDips ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setTapeOptions(p => ({...p, suddenDips: !p.suddenDips}))}
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1">
+                  <Label className="text-slate-400 text-xs">Sudden Dips</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="w-3 h-3 text-slate-500 cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="text-xs">Add sharp random drops during dip phases</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <Switch
+                  checked={tapeOptions.suddenDips}
+                  onCheckedChange={(checked) => setTapeOptions(p => ({...p, suddenDips: checked}))}
                   disabled={isPlaying}
-                  className="w-full"
-                >
-                  {tapeOptions.suddenDips ? 'ON' : 'OFF'}
-                </Button>
+                />
               </div>
               </div>
               <div>
