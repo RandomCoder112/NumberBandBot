@@ -341,7 +341,8 @@ function processTickForBot(botState, tick) {
       momentum: botState.momentum,
       velocity: avgVelocity.toFixed(3),
       state: botState.state,
-      unchangedTicks: botState.unchangedTicks
+      unchangedTicks: botState.unchangedTicks,
+      historicalPeakMomentum: botState.historicalPeakMomentum
     }
   };
 }
@@ -521,7 +522,7 @@ export default function HyperscalpSimulator() {
           <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
             <div className="text-xs text-slate-400 mb-1">Historic Peak</div>
             <div className="text-2xl font-bold text-purple-400">
-              {botStateRef.current?.historicalPeakMomentum || 0}
+              {currentState?.historicalPeakMomentum || 0}
             </div>
           </Card>
           <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
