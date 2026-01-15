@@ -982,7 +982,7 @@ export default function HyperscalpSimulator() {
           </div>
         </Card>
         )}
-
+        
         {/* Parameters */}
         <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
           <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Bot Parameters</h3>
