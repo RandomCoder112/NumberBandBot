@@ -15,7 +15,8 @@ function generateTapeData(basePrice = 4.20, durationSeconds = 90, ticksPerSecond
   const {
     suddenDips = false,
     randomization = 1.0,
-    volatilityMultiplier = 1.0
+    volatilityMultiplier = 1.0,
+    maxPriceRange = 5.0
   } = options;
   
   const ticks = [];
@@ -61,7 +62,16 @@ function generateTapeData(basePrice = 4.20, durationSeconds = 90, ticksPerSecond
       
       const noise = (Math.random() - 0.5) * phase.volatility * (isFastMove ? 1.5 : 1);
       const trendMove = phase.trend * (1 + (Math.random() - 0.5) * 0.8 * randomization) * fastMultiplier * dipMultiplier;
-      price = Math.max(1, price + trendMove + noise);
+      let newPrice = price + trendMove + noise;
+      
+      // Constrain price within range if maxPriceRange is set
+      if (maxPriceRange > 0) {
+        const minPrice = basePrice - maxPriceRange;
+        const maxPrice = basePrice + maxPriceRange;
+        newPrice = Math.max(minPrice, Math.min(maxPrice, newPrice));
+      }
+      
+      price = Math.max(1, newPrice);
       
       if (phase.name.includes('stall')) {
         spread = 0.01 + Math.random() * 0.025;
@@ -419,7 +429,8 @@ export default function HyperscalpSimulator() {
     suddenDips: false,
     randomization: 1.0,
     volatilityMultiplier: 1.0,
-    startingPrice: 4.20
+    startingPrice: 4.20,
+    maxPriceRange: 5.0 // Maximum price change from starting price
   });
   
   const generateNewTape = useCallback(() => {
@@ -887,7 +898,7 @@ export default function HyperscalpSimulator() {
         {mode === 'simulator' && (
           <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
             <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Tape Generation</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div>
               <div className="flex items-center gap-1 mb-1">
                 <Label className="text-slate-400 text-xs">Starting Price</Label>
@@ -975,6 +986,29 @@ export default function HyperscalpSimulator() {
                   disabled={isPlaying}
                 />
                 <span className="text-emerald-400 font-mono text-sm w-10">{(tapeOptions.volatilityMultiplier * 100).toFixed(0)}%</span>
+              </div>
+            </div>
+            <div>
+              <div className="flex items-center gap-1 mb-1">
+                <Label className="text-slate-400 text-xs">Price Range Limit</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="w-3 h-3 text-slate-500 cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">Max price movement from start (0 = unlimited, parabolic)</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="flex items-center gap-2 mt-1">
+                <Slider
+                  value={[tapeOptions.maxPriceRange * 100]}
+                  onValueChange={([v]) => setTapeOptions(p => ({...p, maxPriceRange: v/100}))}
+                  min={0} max={500} step={10}
+                  className="flex-1"
+                  disabled={isPlaying}
+                />
+                <span className="text-emerald-400 font-mono text-sm w-12">{tapeOptions.maxPriceRange === 0 ? 'OFF' : `$${tapeOptions.maxPriceRange.toFixed(2)}`}</span>
               </div>
             </div>
           </div>
