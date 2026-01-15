@@ -34,16 +34,20 @@ function generateTapeData(basePrice = 4.20, durationSeconds = 60, ticksPerSecond
     const phaseEnd = phaseStart + Math.floor(totalTicks * phase.duration);
     
     while (currentTick < phaseEnd && currentTick < totalTicks) {
-      const noise = (Math.random() - 0.5) * phase.volatility;
-      const trendMove = phase.trend * (1 + (Math.random() - 0.5) * 0.4);
+      // Add occasional fast spikes (small-cap chaos)
+      const isFastMove = Math.random() < 0.08;
+      const fastMultiplier = isFastMove ? (Math.random() < 0.5 ? 2.5 : -1.8) : 1;
+      
+      const noise = (Math.random() - 0.5) * phase.volatility * (isFastMove ? 1.5 : 1);
+      const trendMove = phase.trend * (1 + (Math.random() - 0.5) * 0.8) * fastMultiplier;
       price = Math.max(1, price + trendMove + noise);
       
       if (phase.name.includes('stall')) {
-        spread = 0.01 + Math.random() * 0.015;
+        spread = 0.01 + Math.random() * 0.025;
       } else if (phase.name === 'spike_up' || phase.name === 'bounce') {
-        spread = 0.04 + Math.random() * 0.12;
+        spread = 0.06 + Math.random() * 0.18;
       } else {
-        spread = 0.025 + Math.random() * 0.07;
+        spread = 0.03 + Math.random() * 0.12;
       }
       
       const halfSpread = spread / 2;
