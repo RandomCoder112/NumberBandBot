@@ -278,15 +278,26 @@ function processTickForBot(botState, tick) {
       
       // After exit, look for next entry opportunity
       botState.position = null;
-      if (reason === 'STOP_LOSS') {
-        // Still dipping, look for consolidation/next entry
-        botState.state = 'BUILDING_UP';
-        // Keep momentum counter to track if it continues building or dips again
+      if (reason === 'STOP_LOSS' || reason === 'SUSTAINED_DROP') {
+        // Check if historical momentum was strong enough to keep looking
+        const stillStrong = botState.historicalPeakMomentum >= minMomentumForSpike;
+        if (stillStrong) {
+          // Still dipping, look for next consolidation/entry
+          botState.state = 'BUILDING_UP';
+        } else {
+          botState.state = 'IDLE';
+          botState.momentum = 0;
+          botState.prevMomentum = 0;
+          botState.peakMomentum = 0;
+          botState.historicalPeakMomentum = 0;
+        }
       } else {
         // Profit taken, reset
         botState.state = 'IDLE';
         botState.momentum = 0;
         botState.prevMomentum = 0;
+        botState.peakMomentum = 0;
+        botState.historicalPeakMomentum = 0;
       }
       botState.dipStartTick = null;
       botState.dipStartMomentum = null;
