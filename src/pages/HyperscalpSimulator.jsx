@@ -585,9 +585,30 @@ export default function HyperscalpSimulator() {
                   ) : null;
                 })}
               </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
+              </ResponsiveContainer>
+              </div>
+              </Card>
+
+              {/* Tape Display */}
+              <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
+              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Live Tape</h3>
+              <div className="space-y-1 h-[360px] overflow-y-auto">
+              {recentTicks.map((tick, idx) => (
+              <div 
+                key={`tape-${tick.tick}`}
+                className={`flex items-center justify-between px-2 py-1 rounded text-xs font-mono ${
+                  tick.direction === 'up' ? 'bg-emerald-500/20 text-emerald-400' :
+                  tick.direction === 'down' ? 'bg-red-500/20 text-red-400' :
+                  'bg-slate-700/30 text-slate-400'
+                }`}
+              >
+                <span className="font-bold">${tick.mid.toFixed(3)}</span>
+                <span className="text-[10px] text-slate-500">{tick.volume}</span>
+              </div>
+              ))}
+              </div>
+              </Card>
+              </div>
         
         {/* Parameters */}
         <Card className="bg-slate-800/80 border-slate-700 p-4 backdrop-blur">
