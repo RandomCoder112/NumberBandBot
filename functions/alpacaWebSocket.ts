@@ -41,39 +41,39 @@ Deno.serve(async (req) => {
   
   socket.onopen = () => {
     console.log('Client connected, connecting to Alpaca...');
-    
+
     // Connect to Alpaca WebSocket
     alpacaWs = new WebSocket('wss://stream.data.alpaca.markets/v2/iex');
-    
+
     alpacaWs.onopen = () => {
       console.log('Connected to Alpaca, authenticating...');
-      // Authenticate
+      // Authenticate - subscribe ONLY after receiving authenticated confirmation
       alpacaWs.send(JSON.stringify({
         action: 'auth',
         key: apiKey,
         secret: apiSecret
       }));
-      
-      // Subscribe to quotes and trades
-      setTimeout(() => {
-        console.log(`Subscribing to ${ticker}...`);
-        alpacaWs.send(JSON.stringify({
-          action: 'subscribe',
-          quotes: [ticker],
-          trades: [ticker]
-        }));
-      }, 500);
     };
-    
+
     alpacaWs.onmessage = (event) => {
       try {
-        const data = JSON.parse(event.data);
-        console.log('Alpaca message:', data);
-        
-        // Forward all messages to client
-        if (Array.isArray(data)) {
-          for (const msg of data) {
-            if (msg.T === 'q') {
+        const messages = JSON.parse(event.data);
+        console.log('Alpaca message:', messages);
+
+        // Alpaca always sends messages as arrays
+        if (Array.isArray(messages)) {
+          for (const msg of messages) {
+            // Check for authentication success FIRST
+            if (msg.msg === 'authenticated') {
+              console.log('Authenticated with Alpaca, subscribing to', ticker);
+              // NOW subscribe after authentication
+              alpacaWs.send(JSON.stringify({
+                action: 'subscribe',
+                quotes: [ticker],
+                trades: [ticker]
+              }));
+              socket.send(JSON.stringify({ type: 'status', message: 'Authenticated with Alpaca' }));
+            } else if (msg.T === 'q') {
               // Quote message
               console.log(`Quote: ${msg.S} ${msg.bp} x ${msg.ap}`);
               socket.send(JSON.stringify({
@@ -95,9 +95,9 @@ Deno.serve(async (req) => {
                 size: msg.s,
                 timestamp: msg.t
               }));
-            } else if (msg.msg === 'authenticated') {
-              console.log('Authenticated with Alpaca');
-              socket.send(JSON.stringify({ type: 'status', message: 'Authenticated with Alpaca' }));
+            } else if (msg.T === 'subscription') {
+              console.log('Subscription confirmed:', msg);
+              socket.send(JSON.stringify({ type: 'status', message: `Subscribed to ${ticker}` }));
             } else if (msg.msg) {
               console.log('Alpaca status:', msg.msg);
               socket.send(JSON.stringify({ type: 'status', message: msg.msg }));
