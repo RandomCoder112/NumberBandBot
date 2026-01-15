@@ -758,7 +758,7 @@ export default function HyperscalpSimulator() {
                 <Slider
                   value={[params.minDipTicks]}
                   onValueChange={([v]) => setParams(p => ({...p, minDipTicks: v}))}
-                  min={2} max={12} step={1}
+                  min={2} max={20} step={1}
                   className="flex-1"
                   disabled={isPlaying}
                 />
@@ -781,7 +781,7 @@ export default function HyperscalpSimulator() {
                 <Slider
                   value={[params.stallVelocityThreshold * 100]}
                   onValueChange={([v]) => setParams(p => ({...p, stallVelocityThreshold: v/100}))}
-                  min={5} max={30} step={1}
+                  min={5} max={50} step={1}
                   className="flex-1"
                   disabled={isPlaying}
                 />
@@ -804,7 +804,7 @@ export default function HyperscalpSimulator() {
                 <Slider
                   value={[params.stopLossMomentumDrop]}
                   onValueChange={([v]) => setParams(p => ({...p, stopLossMomentumDrop: v}))}
-                  min={1} max={8} step={1}
+                  min={1} max={15} step={1}
                   className="flex-1"
                   disabled={isPlaying}
                 />
@@ -827,7 +827,7 @@ export default function HyperscalpSimulator() {
                 <Slider
                   value={[params.profitMomentumRise]}
                   onValueChange={([v]) => setParams(p => ({...p, profitMomentumRise: v}))}
-                  min={2} max={10} step={1}
+                  min={2} max={20} step={1}
                   className="flex-1"
                   disabled={isPlaying}
                 />
