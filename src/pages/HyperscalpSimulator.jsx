@@ -638,18 +638,16 @@ export default function HyperscalpSimulator() {
               <TrendingUp className="w-4 h-4 text-slate-400" />
               <Label className="text-slate-400 text-xs">Mode:</Label>
               <Button 
-                variant={mode === 'simulator' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => { setMode('simulator'); reset(); }}
-                className="h-7"
+                className={`h-7 ${mode === 'simulator' ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-700 hover:bg-slate-600 text-slate-300'}`}
               >
                 Simulator
               </Button>
               <Button 
-                variant={mode === 'live' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => { setMode('live'); reset(); }}
-                className="h-7"
+                className={`h-7 ${mode === 'live' ? 'bg-cyan-600 hover:bg-cyan-500 text-white' : 'bg-slate-700 hover:bg-slate-600 text-slate-300'}`}
               >
                 Live
               </Button>
