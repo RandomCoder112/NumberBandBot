@@ -512,37 +512,26 @@ export default function HyperscalpSimulator() {
     liveDataRef.current = [];
     setTrades([]);
 
-    // Connect to Alpaca websocket
-    const ws = new WebSocket('wss://stream.data.alpaca.markets/v2/iex');
+    // Connect to backend WebSocket proxy
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/api/functions/alpacaWebSocket?ticker=${ticker}`;
+    const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
-
-    ws.onopen = () => {
-      ws.send(JSON.stringify({
-        action: 'auth',
-        key: 'YOUR_KEY_PLACEHOLDER', // This won't work client-side, need backend
-        secret: 'YOUR_SECRET_PLACEHOLDER'
-      }));
-
-      setTimeout(() => {
-        ws.send(JSON.stringify({
-          action: 'subscribe',
-          quotes: [ticker],
-          trades: [ticker]
-        }));
-      }, 500);
-    };
 
     let lastBid = null;
     let lastAsk = null;
     let tickCounter = 0;
 
+    ws.onopen = () => {
+      console.log('Connected to live stream');
+    };
+
     ws.onmessage = async (event) => {
       const data = JSON.parse(event.data);
 
-      if (data[0]?.T === 'q') { // Quote
-        const quote = data[0];
-        lastBid = quote.bp;
-        lastAsk = quote.ap;
+      if (data.type === 'quote') {
+        lastBid = data.bid;
+        lastAsk = data.ask;
 
         const mid = (lastBid + lastAsk) / 2;
         const spread = lastAsk - lastBid;
@@ -554,7 +543,7 @@ export default function HyperscalpSimulator() {
           ask: lastAsk,
           mid,
           spread,
-          volume: quote.bs + quote.as
+          volume: data.bidSize + data.askSize
         };
 
         liveDataRef.current.push(tick);
@@ -593,6 +582,10 @@ export default function HyperscalpSimulator() {
 
         setCurrentState(result.debugInfo);
         setCurrentTick(tickCounter);
+      } else if (data.type === 'status') {
+        console.log('Status:', data.message);
+      } else if (data.type === 'error') {
+        console.error('Stream error:', data.message);
       }
     };
 
