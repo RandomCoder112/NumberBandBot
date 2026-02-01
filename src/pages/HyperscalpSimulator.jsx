@@ -511,7 +511,7 @@ export default function HyperscalpSimulator() {
   };
 
   const startLiveMode = () => {
-    console.log("werwr");
+    
     if (!ticker || shareQty <= 0) return;
 
     setBotRunning(true);
